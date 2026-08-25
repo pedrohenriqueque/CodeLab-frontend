@@ -105,7 +105,7 @@ export default function StudentActivityListPage() {
           {filteredAtividades.map((atv) => {
             const status = STATUS_MAP[atv.status] || STATUS_MAP.publicado;
             const totalFuncoes = atv.funcoes?.length || 0;
-            
+
             // Calculate progress based on real functions
             let completedFuncoes = 0;
             if (atv.funcoes) {
@@ -114,7 +114,7 @@ export default function StudentActivityListPage() {
                 return p && p.melhorNota >= f.pontos;
               }).length;
             }
-            
+
             const progressoPercent = totalFuncoes > 0 ? (completedFuncoes / totalFuncoes) * 100 : 0;
 
             return (

@@ -30,6 +30,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import SchoolIcon from '@mui/icons-material/School';
 import TerminalIcon from '@mui/icons-material/Terminal';
+import CodeIcon from '@mui/icons-material/Code';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 
@@ -90,18 +91,41 @@ export default function Layout() {
           )}
 
           {/* Logo */}
-          <TerminalIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-          <Typography
-            variant="h6"
+          <Box
+            onClick={() => navigate('/')}
             sx={{
-              fontWeight: 700,
-              color: 'primary.main',
-              letterSpacing: '-0.02em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              cursor: 'pointer',
               mr: { xs: 1, md: 4 },
             }}
           >
-            CodeLab
-          </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: 1.5,
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+              }}
+            >
+              <CodeIcon sx={{ fontSize: 20 }} />
+            </Box>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                color: 'text.primary',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Code<Box component="span" sx={{ color: 'primary.main' }}>Lab</Box>
+            </Typography>
+          </Box>
 
           {/* Desktop Navigation */}
           {showNav && !isMobile && (

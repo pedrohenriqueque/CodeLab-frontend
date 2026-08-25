@@ -12,8 +12,9 @@ import { SnackbarProvider } from '../shared/hooks/useSnackbar';
 import Layout from '../shared/components/Layout';
 import ProtectedRoute from '../shared/components/ProtectedRoute';
 
-// Auth
+// Auth & Public
 import LoginPage from '../features/auth/pages/LoginPage';
+import LandingPage from '../features/landing/pages/LandingPage';
 
 // Professor
 import DashboardPage from '../features/dashboard/pages/DashboardPage';
@@ -28,7 +29,8 @@ import StudentActivityDetailPage from '../features/atividades/pages/StudentActiv
 import CodeSubmissionPage from '../features/submissoes/pages/CodeSubmissionPage';
 
 function HomeRedirect() {
-  const { isProfessor } = useAuth();
+  const { user, isProfessor } = useAuth();
+  if (!user) return <LandingPage />;
   if (isProfessor) return <Navigate to="/dashboard" replace />;
   return <Navigate to="/aluno/atividades" replace />;
 }
@@ -36,6 +38,9 @@ function HomeRedirect() {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Tela Inicial Pública */}
+      <Route path="/" element={<LandingPage />} />
+
       {/* Login público */}
       <Route path="/login" element={<LoginPage />} />
 
@@ -47,8 +52,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        {/* Home redirect */}
-        <Route index element={<HomeRedirect />} />
+        {/* Rota autenticada base /app ou redirect */}
+        <Route path="app" element={<HomeRedirect />} />
 
         {/* ===== PROFESSOR ===== */}
         <Route

@@ -1,12 +1,9 @@
 /**
- * AuthContext + AuthProvider — gerencia sessão do usuário.
- *
- * Armazena user + token no localStorage para persistência entre reloads.
- * Expõe: user, isAuthenticated, loading, login(), logout().
+ * AuthContext + AuthProvider — gerencia sessão do usuário e autenticação/registro.
  */
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { loginApi, logoutApi } from '../api';
+import { loginApi, registerApi, logoutApi } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -38,6 +35,14 @@ export function AuthProvider({ children }) {
     return userData;
   }, []);
 
+  const register = useCallback(async (dados) => {
+    const { user: userData, token } = await registerApi(dados);
+    localStorage.setItem('codelab_token', token);
+    localStorage.setItem('codelab_user', JSON.stringify(userData));
+    setUser(userData);
+    return userData;
+  }, []);
+
   const logout = useCallback(() => {
     logoutApi();
     setUser(null);
@@ -50,6 +55,7 @@ export function AuthProvider({ children }) {
     isAluno: user?.tipo === 'aluno',
     loading,
     login,
+    register,
     logout,
   };
 
@@ -62,7 +68,6 @@ export function AuthProvider({ children }) {
 
 /**
  * Hook para acessar o contexto de autenticação.
- * @returns {{ user, isAuthenticated, isProfessor, isAluno, loading, login, logout }}
  */
 export function useAuth() {
   const ctx = useContext(AuthContext);
