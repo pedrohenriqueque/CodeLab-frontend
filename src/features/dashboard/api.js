@@ -5,4 +5,9 @@ export const dashboardApi = {
     const { data } = await httpClient.get('/api/dashboard/estatisticas');
     return data;
   },
+
+  getDashboardAluno: async () => {
+    const { data } = await httpClient.get('/api/dashboard/aluno');
+    return data;
+  },
 };

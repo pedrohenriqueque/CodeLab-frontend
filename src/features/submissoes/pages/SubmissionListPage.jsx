@@ -245,9 +245,9 @@ export default function SubmissionListPage() {
         <DialogContent dividers>
           {/* Resultado da avaliação */}
           {selectedDetail?.resultadoJson ? (
-            <SubmissionResultCard 
-              resultado={selectedDetail.resultadoJson} 
-              feedbackProfessor={selectedDetail.feedbackProfessor} 
+            <SubmissionResultCard
+              resultado={selectedDetail.resultadoJson}
+              feedbackProfessor={selectedDetail.feedbackProfessor}
             />
           ) : (
             <Typography color="text.secondary">Sem resultados disponíveis.</Typography>

@@ -47,6 +47,7 @@ import { createSubmissao } from '../api';
 import SubmissionResultCard from '../components/SubmissionResultCard';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import useProgresso from '../../atividades/hooks/useProgresso';
+import { useAuth } from '../../auth/hooks/useAuthProvider';
 
 const DIFICULDADE_COLORS = {
   facil: 'success',
@@ -64,6 +65,7 @@ export default function CodeSubmissionPage() {
   const { uuid: atividadeUuid, funcaoUuid } = useParams();
   const navigate = useNavigate();
   const { showError } = useSnackbar();
+  const { user } = useAuth();
 
   const [funcao, setFuncao] = useState(null);
   const [atividade, setAtividade] = useState(null);
@@ -73,7 +75,7 @@ export default function CodeSubmissionPage() {
   const [resultado, setResultado] = useState(null);
   const [mostrarCasosTeste, setMostrarCasosTeste] = useState(false);
   
-  const { progresso, refetch: refetchProgresso } = useProgresso();
+  const { progresso, refetch: refetchProgresso } = useProgresso(user?.uuid);
   const funcProg = progresso.find(p => p.funcaoUuid === funcaoUuid);
   const tentativasUsadas = funcProg?.tentativasUsadas || 0;
 

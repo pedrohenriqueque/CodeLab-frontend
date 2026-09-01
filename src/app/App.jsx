@@ -20,7 +20,11 @@ import LandingPage from '../features/landing/pages/LandingPage';
 import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
+import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
+import AlunosPage from '../features/dashboard/pages/AlunosPage';
+import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
+import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
 
 // Aluno
 import SandboxPage from '../features/sandbox/pages/SandboxPage';
@@ -65,6 +69,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="atividades/criar"
+          element={
+            <ProtectedRoute allowedRoles={['professor']}>
+              <CreateActivityWizard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="atividades"
           element={
             <ProtectedRoute allowedRoles={['professor']}>
@@ -93,6 +105,30 @@ function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={['professor']}>
               <SubmissionListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="alunos"
+          element={
+            <ProtectedRoute allowedRoles={['professor']}>
+              <AlunosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="resultados"
+          element={
+            <ProtectedRoute allowedRoles={['professor']}>
+              <ResultadosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="configuracoes"
+          element={
+            <ProtectedRoute>
+              <ConfiguracoesPage />
             </ProtectedRoute>
           }
         />

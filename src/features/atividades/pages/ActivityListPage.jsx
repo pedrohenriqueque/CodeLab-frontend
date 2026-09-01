@@ -26,17 +26,12 @@ import SearchIcon from '@mui/icons-material/Search';
 import useAtividades from '../hooks/useAtividades';
 import StatsCards from '../components/StatsCards';
 import ActivityTable from '../components/ActivityTable';
-import ActivityForm from '../components/ActivityForm';
-import { createAtividade } from '../api';
-import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 export default function ActivityListPage() {
   const { atividades, loading, error, refetch } = useAtividades();
   const [statusFilter, setStatusFilter] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
   const navigate = useNavigate();
-  const { showSuccess, showError } = useSnackbar();
 
   // Filtros
   const filteredAtividades = useMemo(() => {
@@ -58,17 +53,6 @@ export default function ActivityListPage() {
     return result;
   }, [atividades, statusFilter, searchQuery]);
 
-  const handleCreateAtividade = async (data) => {
-    try {
-      await createAtividade(data);
-      showSuccess('Atividade criada com sucesso!');
-      refetch();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao criar atividade');
-      throw err;
-    }
-  };
-
   return (
     <Box className="fade-in">
       {/* Header */}
@@ -83,7 +67,7 @@ export default function ActivityListPage() {
           id="btn-criar-atividade"
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setFormOpen(true)}
+          onClick={() => navigate('/atividades/criar')}
           size="large"
         >
           Criar Atividade
@@ -155,12 +139,14 @@ export default function ActivityListPage() {
         />
       )}
 
-      {/* Dialog criar atividade */}
-      <ActivityForm
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSave={handleCreateAtividade}
-      />
+      {/* Dialog criar atividade (mantido como fallback) */}
+      {false && (
+        <ActivityForm
+          open={formOpen}
+          onClose={() => setFormOpen(false)}
+          onSave={handleCreateAtividade}
+        />
+      )}
     </Box>
   );
 }

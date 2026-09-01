@@ -139,7 +139,7 @@ export default function ActivityDetailPage() {
 
   const status = STATUS_MAP[atividade.status] || STATUS_MAP.rascunho;
   const quickActions = STATUS_ACTIONS[atividade.status] ? [...STATUS_ACTIONS[atividade.status]] : [];
-  
+
   if (atividade.tipo === 'prova' && !atividade.notasLiberadas) {
     quickActions.push({ target: 'liberar_notas', label: 'Liberar Notas', icon: <VisibilityIcon />, color: 'primary' });
   }
@@ -232,7 +232,7 @@ export default function ActivityDetailPage() {
           <CardContent sx={{ py: 2 }}>
             <Typography variant="caption" color="text.secondary">Status / Tipo</Typography>
             <Typography variant="h6">
-              {status.label} 
+              {status.label}
               <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                 ({atividade.tipo === 'prova' ? 'Prova' : 'Exercício'})
               </Typography>

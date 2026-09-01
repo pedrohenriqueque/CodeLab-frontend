@@ -52,6 +52,15 @@ export async function createFuncao(atividadeUuid, body) {
   return data;
 }
 
+export async function updateFuncao(funcaoUuid, body) {
+  const { data } = await httpClient.put(`/api/funcoes/${funcaoUuid}`, body);
+  return data;
+}
+
+export async function deleteFuncao(funcaoUuid) {
+  await httpClient.delete(`/api/funcoes/${funcaoUuid}`);
+}
+
 // ============================================================
 // CASOS DE TESTE
 // ============================================================

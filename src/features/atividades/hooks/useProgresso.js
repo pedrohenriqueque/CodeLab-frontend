@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getProgressoAluno } from '../api';
 
-const MOCK_ALUNO_UUID = "a2000000-0000-0000-0000-000000000002"; // Pedro
-
-export default function useProgresso(alunoUuid = MOCK_ALUNO_UUID) {
+export default function useProgresso(alunoUuid) {
   const [progresso, setProgresso] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!alunoUuid);
   const [error, setError] = useState(null);
 
   const fetchData = useCallback(async () => {
+    if (!alunoUuid) return;
     setLoading(true);
     setError(null);
     try {

@@ -15,14 +15,19 @@ import LoginPage from '../features/auth/pages/LoginPage';
 // Professor — Atividades
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
+import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
 
 // Professor — Submissões
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
+import AlunosPage from '../features/dashboard/pages/AlunosPage';
+import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
+import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
 
 // Professor — Dashboard
 import DashboardPage from '../features/dashboard/pages/DashboardPage';
 
 // Aluno
+import StudentDashboardPage from '../features/dashboard/pages/StudentDashboardPage';
 import StudentActivityListPage from '../features/atividades/pages/StudentActivityListPage';
 import StudentActivityDetailPage from '../features/atividades/pages/StudentActivityDetailPage';
 import CodeSubmissionPage from '../features/submissoes/pages/CodeSubmissionPage';
@@ -35,9 +40,9 @@ function HomeRedirect() {
     if (user.tipo === 'professor') {
       return <Navigate to="/dashboard" replace />;
     }
-    return <Navigate to="/aluno/atividades" replace />;
+    return <Navigate to="/aluno/dashboard" replace />;
   } catch {
-    return <Navigate to="/aluno/atividades" replace />;
+    return <Navigate to="/aluno/dashboard" replace />;
   }
 }
 
@@ -50,6 +55,7 @@ const router = createBrowserRouter([
 
   // Rotas protegidas dentro do Layout
   {
+    path: '/',
     element: (
       <ProtectedRoute>
         <Layout />
@@ -68,6 +74,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={['professor']}>
             <DashboardPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'atividades/criar',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <CreateActivityWizard />
           </ProtectedRoute>
         ),
       },
@@ -95,7 +109,47 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      {
+        path: 'submissoes',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <SubmissionListPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'alunos',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <AlunosPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'resultados',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <ResultadosPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'configuracoes',
+        element: (
+          <ProtectedRoute>
+            <ConfiguracoesPage />
+          </ProtectedRoute>
+        ),
+      },
       // ===== ALUNO =====
+      {
+        path: 'aluno/dashboard',
+        element: (
+          <ProtectedRoute allowedRoles={['aluno']}>
+            <StudentDashboardPage />
+          </ProtectedRoute>
+        ),
+      },
       {
         path: 'aluno/atividades',
         element: (
