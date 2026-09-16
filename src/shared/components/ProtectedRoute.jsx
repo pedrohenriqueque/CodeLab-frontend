@@ -22,7 +22,8 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.tipo)) {
-    return <Navigate to="/" replace />;
+    const fallbackPath = user.tipo === 'professor' ? '/dashboard' : '/aluno/dashboard';
+    return <Navigate to={fallbackPath} replace />;
   }
 
   return children;

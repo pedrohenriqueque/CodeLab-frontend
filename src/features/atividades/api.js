@@ -30,6 +30,11 @@ export async function updateAtividade(uuid, body) {
   return data;
 }
 
+export async function entregarAtividade(atividadeUuid) {
+  const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/entregar`);
+  return data;
+}
+
 // ============================================================
 // FUNÇÕES
 // ============================================================
@@ -62,7 +67,25 @@ export async function deleteFuncao(funcaoUuid) {
 }
 
 // ============================================================
-// CASOS DE TESTE
+// ASSOCIAÇÃO ATIVIDADE × FUNÇÃO (N:N)
+// ============================================================
+
+export async function associarFuncaoAtividade(atividadeUuid, body) {
+  const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/funcoes`, body);
+  return data;
+}
+
+export async function atualizarFuncaoAtividade(atividadeUuid, funcaoUuid, body) {
+  const { data } = await httpClient.patch(`/api/atividades/${atividadeUuid}/funcoes/${funcaoUuid}`, body);
+  return data;
+}
+
+export async function removerFuncaoAtividade(atividadeUuid, funcaoUuid) {
+  await httpClient.delete(`/api/atividades/${atividadeUuid}/funcoes/${funcaoUuid}`);
+}
+
+// ============================================================
+// CASOS DE TESTE (CANÔNICOS NA BIBLIOTECA)
 // ============================================================
 
 export async function getCasosTeste(funcaoUuid) {
@@ -74,6 +97,16 @@ export async function createCasosTeste(funcaoUuid, body) {
   const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos-teste`, body);
   return data;
 }
+
+export async function updateCasoTeste(funcaoUuid, casoUuid, body) {
+  const { data } = await httpClient.put(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`, body);
+  return data;
+}
+
+export async function deleteCasoTeste(funcaoUuid, casoUuid) {
+  await httpClient.delete(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`);
+}
+
 
 // ============================================================
 // PROGRESSO

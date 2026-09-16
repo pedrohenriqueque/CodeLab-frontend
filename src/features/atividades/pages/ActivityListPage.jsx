@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
+import FunctionsIcon from '@mui/icons-material/Functions';
 
 import useAtividades from '../hooks/useAtividades';
 import StatsCards from '../components/StatsCards';
@@ -63,15 +64,26 @@ export default function ActivityListPage() {
             Gerencie suas listas de exercícios
           </Typography>
         </Box>
-        <Button
-          id="btn-criar-atividade"
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/atividades/criar')}
-          size="large"
-        >
-          Criar Atividade
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Button
+            id="btn-biblioteca-funcoes"
+            variant="outlined"
+            startIcon={<FunctionsIcon />}
+            onClick={() => navigate('/funcoes')}
+            size="large"
+          >
+            Biblioteca de Funções
+          </Button>
+          <Button
+            id="btn-criar-atividade"
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/atividades/criar')}
+            size="large"
+          >
+            Criar Atividade
+          </Button>
+        </Box>
       </Box>
 
       {/* Stats */}

@@ -75,14 +75,14 @@ export default function SubmissionListPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSubmissoes(funcaoUuid);
+      const data = await getSubmissoes(funcaoUuid, null, atividadeUuid);
       setSubmissoes(data);
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao carregar submissões');
     } finally {
       setLoading(false);
     }
-  }, [funcaoUuid]);
+  }, [funcaoUuid, atividadeUuid]);
 
   useEffect(() => {
     fetchData();

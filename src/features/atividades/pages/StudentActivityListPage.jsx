@@ -39,35 +39,39 @@ function formatDate(iso) {
 }
 
 function deriveStudentStatus(atv, funcoes, progresso) {
-  const total = atv.funcoes?.length ?? 0;
+  if (atv.statusEntrega === 'entregue') return 'entregue';
+  const total = funcoes?.length ?? 0;
   if (total === 0) return 'nao_iniciado';
 
   let enviadas = 0;
   let completas = 0;
 
-  for (const f of (atv.funcoes || [])) {
-    const prog = progresso.find((p) => p.funcaoUuid === f.uuid);
+  for (const f of (funcoes || [])) {
+    const fUuid = f.funcaoUuid || f.uuid;
+    const prog = progresso.find((p) => p.funcaoUuid === fUuid);
+    const peso = f.peso ?? f.pontos ?? 10;
     if (prog && prog.tentativasUsadas > 0) {
       enviadas++;
-      if (prog.melhorNota >= (f.pontos ?? 0)) completas++;
+      if (prog.melhorNota >= peso) completas++;
     }
   }
 
   if (enviadas === 0) return 'nao_iniciado';
-  if (completas === total) return 'enviado';
+  if (completas === total) return 'concluido';
   return 'em_andamento';
 }
 
 const STATUS_MAP = {
+  entregue:     { label: 'Entregue',     bgcolor: '#dcfce7', color: '#15803d' },
+  concluido:    { label: 'Concluído',    bgcolor: '#dcfce7', color: '#15803d' },
   em_andamento: { label: 'Em andamento', bgcolor: '#dbeafe', color: '#1d4ed8' },
-  enviado:      { label: 'Enviado',       bgcolor: '#dcfce7', color: '#15803d' },
-  nao_iniciado: { label: 'Não iniciado',  bgcolor: '#f3f4f6', color: '#6b7280' },
+  nao_iniciado: { label: 'Não iniciado', bgcolor: '#f3f4f6', color: '#6b7280' },
 };
 
 const FILTER_OPTIONS = [
   { value: 'todas',        label: 'Todas as atividades' },
   { value: 'em_andamento', label: 'Em andamento' },
-  { value: 'enviado',      label: 'Enviadas' },
+  { value: 'entregue',     label: 'Entregues' },
   { value: 'nao_iniciado', label: 'Não iniciadas' },
 ];
 
@@ -75,20 +79,22 @@ const FILTER_OPTIONS = [
 
 function ActivityRow({ atv, progresso, onNavigate, isLast }) {
   const total = atv.funcoes?.length ?? 0;
-  const totalPontos = atv.funcoes?.reduce((s, f) => s + (f.pontos ?? 0), 0) ?? 0;
+  const totalPontos = atv.funcoes?.reduce((s, f) => s + (f.peso ?? f.pontos ?? 10), 0) ?? 0;
 
   let pontosObtidos = 0;
   let funcoesConcluidas = 0;
   for (const f of (atv.funcoes || [])) {
-    const prog = progresso.find((p) => p.funcaoUuid === f.uuid);
+    const fUuid = f.funcaoUuid || f.uuid;
+    const prog = progresso.find((p) => p.funcaoUuid === fUuid);
+    const peso = f.peso ?? f.pontos ?? 10;
     if (prog && prog.tentativasUsadas > 0) {
       pontosObtidos += prog.melhorNota;
-      if (prog.melhorNota >= (f.pontos ?? 0)) funcoesConcluidas++;
+      if (prog.melhorNota >= peso) funcoesConcluidas++;
     }
   }
 
   const studentStatus = deriveStudentStatus(atv, atv.funcoes, progresso);
-  const statusCfg = STATUS_MAP[studentStatus];
+  const statusCfg = STATUS_MAP[studentStatus] || STATUS_MAP.nao_iniciado;
   const progressoPct = total > 0 ? (funcoesConcluidas / total) * 100 : 0;
 
   return (

@@ -1,16 +1,16 @@
 /**
- * CreateActivityWizard — Wizard multi-etapas para criar atividades.
+ * CreateActivityWizard — Wizard multi-etapas para criar e editar atividades.
  *
  * Etapas:
- *   1. Informações gerais (título, descrição, tipo)
- *   2. Funções da atividade
- *   3. Casos de teste (por função)
- *   4. Configurações (visibilidade dos testes, submissões)
- *   5. Revisão e publicação
+ *   1. Informações (Título, Descrição, Datas de Abertura/Fechamento, Pontuação Máxima, Tipo)
+ *   2. Funções (Seleção direta da biblioteca, ajuste de dificuldade contextual e pontuação por função)
+ *   3. Casos de teste (Seleção individual por caso com toggle interativo de visibilidade Visível / Oculto)
+ *   4. Configurações (Múltiplas submissões, limite de tentativas, bloqueio de paste, visibilidade pós-envio)
+ *   5. Revisão e Validação (Checklist em tempo real de critérios de validação + Publicação/Rascunho)
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -22,1859 +22,1851 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  MenuItem,
+  Tooltip,
+  Switch,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-} from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import FunctionsIcon from '@mui/icons-material/Functions';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import DataObjectIcon from '@mui/icons-material/DataObject';
-import CodeIcon from '@mui/icons-material/Code';
-import PublishIcon from '@mui/icons-material/Publish';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+  InputAdornment,
+} from "@mui/material";
 
+// Ícones Material UI
+import AddIcon from "@mui/icons-material/Add";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import SearchIcon from "@mui/icons-material/Search";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
+import CodeIcon from "@mui/icons-material/Code";
+import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import PublishIcon from "@mui/icons-material/Publish";
+import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
+
+// Integração com a API do Backend
 import {
   createAtividade,
   getAtividade,
-  getFuncoes,
-  createFuncao,
-  updateFuncao,
-  deleteFuncao,
-  getCasosTeste,
-  createCasosTeste,
   updateAtividade,
-} from '../api';
-import { useSnackbar } from '../../../shared/hooks/useSnackbar';
-
-// ─── Constants ───────────────────────────────────────────────────────────────
+  associarFuncaoAtividade,
+  atualizarFuncaoAtividade,
+  removerFuncaoAtividade,
+} from "../api";
+import { getBibliotecaFuncoes, getCasosTeste } from "../../funcoes/api";
+import { useSnackbar } from "../../../shared/hooks/useSnackbar";
 
 const STEPS = [
-  { label: 'Informações' },
-  { label: 'Funções' },
-  { label: 'Casos de teste' },
-  { label: 'Configurações' },
-  { label: 'Revisão' },
+  { id: 1, label: "Informações" },
+  { id: 2, label: "Funções" },
+  { id: 3, label: "Casos de teste" },
+  { id: 4, label: "Configurações" },
+  { id: 5, label: "Revisão" },
 ];
 
-const C_TYPES = ['int', 'float', 'double', 'char', 'char*', 'void', 'long'];
+const DIFFICULTIES = [
+  { key: "facil", label: "Fácil", color: "#10B981", bg: "#ECFDF5", border: "#A7F3D0" },
+  { key: "medio", label: "Médio", color: "#F59E0B", bg: "#FFFBEB", border: "#FDE68A" },
+  { key: "dificil", label: "Difícil", color: "#EF4444", bg: "#FEF2F2", border: "#FECACA" },
+];
 
-// ─── Stepper ─────────────────────────────────────────────────────────────────
-
-function WizardStepper({ currentStep }) {
+function getDifficultyBadge(diff) {
+  const norm = (diff || "medio").toLowerCase();
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: { xs: 1, sm: 2 },
-        mb: 4,
-        flexWrap: 'wrap',
-      }}
-    >
-      {STEPS.map((step, idx) => {
-        const stepNum = idx + 1;
-        const isActive = currentStep === stepNum;
-        const isDone = currentStep > stepNum;
-
-        return (
-          <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                cursor: 'default',
-              }}
-            >
-              <Box
-                sx={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  backgroundColor: isActive
-                    ? '#2D3282'
-                    : isDone
-                    ? '#E8EAF6'
-                    : 'transparent',
-                  color: isActive ? '#fff' : isDone ? '#2D3282' : '#8A92A6',
-                  border: isActive
-                    ? 'none'
-                    : isDone
-                    ? 'none'
-                    : '1.5px solid #CBD5E1',
-                  flexShrink: 0,
-                }}
-              >
-                {isDone ? <CheckCircleIcon sx={{ fontSize: 16, color: '#2D3282' }} /> : stepNum}
-              </Box>
-              <Typography
-                sx={{
-                  fontSize: '0.85rem',
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? '#2D3282' : isDone ? '#2D3282' : '#8A92A6',
-                  display: { xs: 'none', sm: 'block' },
-                }}
-              >
-                {step.label}
-              </Typography>
-            </Box>
-
-            {idx < STEPS.length - 1 && (
-              <Box
-                sx={{
-                  width: { xs: 12, sm: 24 },
-                  height: 1,
-                  backgroundColor: '#E2E8F0',
-                }}
-              />
-            )}
-          </Box>
-        );
-      })}
-    </Box>
+    DIFFICULTIES.find((d) => d.key === norm) || {
+      key: norm,
+      label: norm.charAt(0).toUpperCase() + norm.slice(1),
+      color: "#6366F1",
+      bg: "#EEF2FF",
+      border: "#C7D2FE",
+    }
   );
 }
 
-// ─── Step 1: Informações ─────────────────────────────────────────────────────
+export default function CreateActivityWizard() {
+  const navigate = useNavigate();
+  const { uuid } = useParams();
+  const { showSuccess, showError } = useSnackbar();
 
-function StepInformacoes({ data, onChange, onNext }) {
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onNext();
+  // Estados principais
+  const [step, setStep] = useState(1);
+  const [loadingInitial, setLoadingInitial] = useState(!!uuid);
+  const [saving, setSaving] = useState(false);
+  const [stepErrors, setStepErrors] = useState({});
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+
+  // Estado da biblioteca geral do backend
+  const [libraryFunctions, setLibraryFunctions] = useState([]);
+  const [loadingLib, setLoadingLib] = useState(true);
+
+  // Form State: Informações
+  const [info, setInfo] = useState({
+    title: "",
+    description: "",
+    openDate: "",
+    closeDate: "",
+    maxPoints: "100",
+    tipo: "exercicio",
+  });
+
+  // Form State: Funções selecionadas
+  // Cada item: { fnId, name, signature, description, difficulty, defaultDifficulty, points, cases: [{ id, numero, inputStr, outputStr, selected, visible }] }
+  const [selected, setSelected] = useState([]);
+
+  // Form State: Configurações
+  const [config, setConfig] = useState({
+    allowMultiple: true,
+    maxAttempts: "5",
+    testsVisible: false,
+    bloquearPaste: false,
+  });
+
+  // Carregar biblioteca de funções do backend
+  const loadLibrary = useCallback(async () => {
+    setLoadingLib(true);
+    try {
+      const data = await getBibliotecaFuncoes();
+      const list = Array.isArray(data) ? data : [];
+      setLibraryFunctions(list);
+      return list;
+    } catch {
+      showError("Erro ao carregar funções da biblioteca");
+      return [];
+    } finally {
+      setLoadingLib(false);
+    }
+  }, [showError]);
+
+  // Carregar dados se for edição de atividade existente
+  useEffect(() => {
+    async function init() {
+      const lib = await loadLibrary();
+
+      if (uuid) {
+        setLoadingInitial(true);
+        try {
+          const ativ = await getAtividade(uuid);
+          if (ativ) {
+            setInfo({
+              title: ativ.titulo || "",
+              description: ativ.descricao || "",
+              openDate: ativ.dataAbertura ? ativ.dataAbertura.slice(0, 10) : "",
+              closeDate: ativ.dataFechamento ? ativ.dataFechamento.slice(0, 10) : "",
+              maxPoints: String(ativ.pontuacaoMaxima || 100),
+              tipo: ativ.tipo || "exercicio",
+            });
+
+            setConfig({
+              allowMultiple: ativ.duracaoMinutos === null || ativ.duracaoMinutos === undefined,
+              maxAttempts: "5",
+              testsVisible: ativ.notasLiberadas || false,
+              bloquearPaste: ativ.bloquearPaste || false,
+            });
+
+            // Mapeia funções vinculadas da atividade
+            const mappedSelected = await Promise.all(
+              (ativ.funcoes || []).map(async (f) => {
+                const fUuid = f.funcaoUuid || f.uuid;
+                const libFn = lib.find((item) => item.uuid === fUuid) || f;
+                let canonicalCases = libFn.casosTeste || libFn.casos_teste || [];
+
+                // Se a função na lib não veio com os casos, busca da API
+                if (!canonicalCases || canonicalCases.length === 0) {
+                  try {
+                    const fetchedCases = await getCasosTeste(fUuid);
+                    if (Array.isArray(fetchedCases) && fetchedCases.length > 0) {
+                      canonicalCases = fetchedCases;
+                    }
+                  } catch (e) {
+                    console.error("Erro ao buscar casos canônicos para edição:", e);
+                  }
+                }
+
+                const assignedCases = f.casosTeste || f.casos_teste || [];
+                const assignedUuids = new Set(
+                  assignedCases.map((c) => c.casoTesteUuid || c.caso_teste_uuid || c.uuid)
+                );
+
+                // Cria mapa de visibilidade para os casos vinculados
+                const visibilityMap = new Map();
+                assignedCases.forEach((c) => {
+                  const cId = c.casoTesteUuid || c.caso_teste_uuid || c.uuid;
+                  visibilityMap.set(cId, !c.oculto);
+                });
+
+                // Monta casos combinando os canônicos da biblioteca com os vinculados
+                const baseList = canonicalCases.length > 0 ? canonicalCases : assignedCases;
+                const cases = baseList.map((tc, idx) => {
+                  const tcId = tc.uuid || tc.casoTesteUuid || tc.caso_teste_uuid;
+                  const isSelected = assignedUuids.size === 0 ? true : assignedUuids.has(tcId);
+                  const isVisible = visibilityMap.has(tcId) ? visibilityMap.get(tcId) : !tc.oculto;
+
+                  return {
+                    id: tcId,
+                    numero: tc.numero || idx + 1,
+                    inputStr: typeof tc.inputs === "object" ? JSON.stringify(tc.inputs) : String(tc.inputs || ""),
+                    outputStr:
+                      typeof tc.outputEsperado === "object" && tc.outputEsperado !== null
+                        ? tc.outputEsperado?.valor ?? JSON.stringify(tc.outputEsperado)
+                        : String(tc.outputEsperado || tc.output_esperado || ""),
+                    selected: isSelected,
+                    visible: isVisible,
+                  };
+                });
+
+                return {
+                  fnId: fUuid,
+                  name: f.nomeFuncao || f.nome_funcao || libFn.nomeFuncao,
+                  signature: `${f.nomeFuncao || f.nome_funcao || libFn.nomeFuncao}()`,
+                  description: f.descricao || libFn.descricao || "",
+                  difficulty: f.dificuldade || libFn.dificuldadePadrao || "medio",
+                  defaultDifficulty: libFn.dificuldadePadrao || f.dificuldadePadrao || "medio",
+                  points: Number(f.peso) || 10,
+                  cases,
+                };
+              })
+            );
+
+            setSelected(mappedSelected);
+          }
+        } catch (err) {
+          showError(err.response?.data?.detail || "Erro ao carregar dados da atividade");
+        } finally {
+          setLoadingInitial(false);
+        }
+      }
+    }
+
+    init();
+  }, [uuid, loadLibrary, showError]);
+
+  // Funções disponíveis na biblioteca que ainda não foram adicionadas
+  const availableToAdd = useMemo(() => {
+    const selectedIds = new Set(selected.map((s) => s.fnId));
+    return libraryFunctions.filter((f) => !selectedIds.has(f.uuid));
+  }, [libraryFunctions, selected]);
+
+  // Filtragem na modal de seleção
+  const filteredAvailable = useMemo(() => {
+    if (!pickerSearch.trim()) return availableToAdd;
+    const q = pickerSearch.toLowerCase();
+    return availableToAdd.filter(
+      (f) =>
+        (f.nomeFuncao || f.nome_funcao || "").toLowerCase().includes(q) ||
+        (f.descricao || "").toLowerCase().includes(q)
+    );
+  }, [availableToAdd, pickerSearch]);
+
+  // Adicionar função da biblioteca à atividade (busca os casos de teste canônicos se necessário)
+  const [addingFnId, setAddingFnId] = useState(null);
+
+  const handleAddFunction = async (libFn) => {
+    setAddingFnId(libFn.uuid);
+    let canonicalCases = libFn.casosTeste || libFn.casos_teste || [];
+
+    // Se a função veio de getBibliotecaFuncoes(), os casos de teste não vêm no array; busca via API
+    if (!canonicalCases || canonicalCases.length === 0) {
+      try {
+        const fetchedCases = await getCasosTeste(libFn.uuid);
+        if (Array.isArray(fetchedCases)) {
+          canonicalCases = fetchedCases;
+        }
+      } catch (err) {
+        console.error("Erro ao buscar casos de teste da função:", err);
+      }
+    }
+
+    const cases = (canonicalCases || []).map((tc, idx) => ({
+      id: tc.uuid || tc.casoTesteUuid || tc.caso_teste_uuid,
+      numero: tc.numero || idx + 1,
+      inputStr: typeof tc.inputs === "object" ? JSON.stringify(tc.inputs) : String(tc.inputs || ""),
+      outputStr:
+        typeof tc.outputEsperado === "object" && tc.outputEsperado !== null
+          ? tc.outputEsperado?.valor ?? JSON.stringify(tc.outputEsperado)
+          : String(tc.outputEsperado || tc.output_esperado || ""),
+      selected: true,
+      visible: idx < 2, // os 2 primeiros visíveis por padrão como no design
+    }));
+
+    setSelected((prev) => [
+      ...prev,
+      {
+        fnId: libFn.uuid,
+        name: libFn.nomeFuncao || libFn.nome_funcao,
+        signature: `${libFn.nomeFuncao || libFn.nome_funcao}()`,
+        description: libFn.descricao || "",
+        difficulty: libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+        defaultDifficulty: libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+        points: 10,
+        cases,
+      },
+    ]);
+    setAddingFnId(null);
   };
 
+  const handleRemoveFunction = (fnId) => {
+    setSelected((prev) => prev.filter((s) => s.fnId !== fnId));
+  };
+
+  const updateFn = (fnId, patch) => {
+    setSelected((prev) => prev.map((s) => (s.fnId === fnId ? { ...s, ...patch } : s)));
+  };
+
+  const updateCase = (fnId, caseId, patch) => {
+    setSelected((prev) =>
+      prev.map((s) =>
+        s.fnId === fnId
+          ? {
+              ...s,
+              cases: s.cases.map((c) => (c.id === caseId ? { ...c, ...patch } : c)),
+            }
+          : s
+      )
+    );
+  };
+
+  // Validação das etapas
+  const validateStep = (s) => {
+    const errors = {};
+    if (s === 1) {
+      if (!info.title.trim()) errors.title = "O título é obrigatório.";
+      if (!info.openDate) errors.openDate = "A data de abertura é obrigatória.";
+      if (!info.closeDate) errors.closeDate = "A data de fechamento é obrigatória.";
+      if (info.openDate && info.closeDate && info.closeDate <= info.openDate) {
+        errors.closeDate = "A data de fechamento deve ser posterior à data de abertura.";
+      }
+      if (!info.maxPoints || Number(info.maxPoints) < 1) {
+        errors.maxPoints = "A pontuação máxima deve ser ao menos 1.";
+      }
+    }
+    if (s === 2) {
+      if (selected.length === 0) {
+        errors.functions = "Adicione ao menos uma função da biblioteca à atividade.";
+      }
+      selected.forEach((sf) => {
+        if (!sf.points || sf.points <= 0) {
+          errors[`pts_${sf.fnId}`] = `${sf.name}: a pontuação deve ser maior que zero.`;
+        }
+      });
+    }
+    if (s === 3) {
+      selected.forEach((sf) => {
+        const chosen = sf.cases.filter((c) => c.selected).length;
+        if (chosen === 0) {
+          errors[`cases_${sf.fnId}`] = `${sf.name}: selecione ao menos um caso de teste para avaliação.`;
+        }
+      });
+    }
+    return errors;
+  };
+
+  const handleNext = () => {
+    const errors = validateStep(step);
+    setStepErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showError("Corrija os erros antes de avançar.");
+      return;
+    }
+    setStepErrors({});
+    setStep((prev) => Math.min(prev + 1, 5));
+  };
+
+  // Salvar (Rascunho ou Publicação) com sincronização no backend
+  const handleSave = async (publish = false) => {
+    const allErrors = { ...validateStep(1), ...validateStep(2), ...validateStep(3) };
+    if (Object.keys(allErrors).length > 0) {
+      setStepErrors(allErrors);
+      showError("Preencha todos os campos obrigatórios antes de salvar.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payloadAtividade = {
+        titulo: info.title.trim(),
+        descricao: info.description.trim() || null,
+        tipo: info.tipo || "exercicio",
+        status: publish ? "publicado" : "rascunho",
+        pontuacaoMaxima: Number(info.maxPoints),
+        bloquearPaste: config.bloquearPaste,
+        notasLiberadas: config.testsVisible,
+      };
+
+      if (info.openDate) {
+        payloadAtividade.dataAbertura = new Date(info.openDate + "T00:00:00").toISOString();
+      }
+      if (info.closeDate) {
+        payloadAtividade.dataFechamento = new Date(info.closeDate + "T23:59:59").toISOString();
+      }
+
+      let atividadeTargetUuid = uuid;
+
+      if (uuid) {
+        // Atualiza atividade existente
+        await updateAtividade(uuid, payloadAtividade);
+      } else {
+        // Cria nova atividade
+        const novaAtiv = await createAtividade(payloadAtividade);
+        atividadeTargetUuid = novaAtiv.uuid;
+      }
+
+      // Sincroniza funções e casos de teste
+      // Se for edição, obtém estado atual para comparar adições, alterações e remoções
+      const currentRemote = await getAtividade(atividadeTargetUuid);
+      const remoteFns = currentRemote.funcoes || [];
+      const remoteIds = new Set(remoteFns.map((f) => f.funcaoUuid || f.uuid));
+      const localIds = new Set(selected.map((s) => s.fnId));
+
+      // 1. Remover funções que foram desassociadas
+      for (const rf of remoteFns) {
+        const fUuid = rf.funcaoUuid || rf.uuid;
+        if (!localIds.has(fUuid)) {
+          await removerFuncaoAtividade(atividadeTargetUuid, fUuid);
+        }
+      }
+
+      // 2. Associar novas ou atualizar existentes
+      for (let i = 0; i < selected.length; i++) {
+        const sf = selected[i];
+        const casosPayload = sf.cases
+          .filter((c) => c.selected)
+          .map((c) => ({
+            casoTesteUuid: c.id,
+            oculto: !c.visible,
+          }));
+
+        if (!remoteIds.has(sf.fnId)) {
+          // Associar nova
+          await associarFuncaoAtividade(atividadeTargetUuid, {
+            funcaoUuid: sf.fnId,
+            dificuldade: sf.difficulty,
+            peso: Number(sf.points),
+            ordem: i + 1,
+            casosTeste: casosPayload,
+          });
+        } else {
+          // Atualizar existente
+          await atualizarFuncaoAtividade(atividadeTargetUuid, sf.fnId, {
+            dificuldade: sf.difficulty,
+            peso: Number(sf.points),
+            ordem: i + 1,
+            casosTeste: casosPayload,
+          });
+        }
+      }
+
+      showSuccess(
+        publish ? "Atividade publicada com sucesso!" : "Rascunho salvo com sucesso!"
+      );
+      navigate("/atividades");
+    } catch (err) {
+      showError(err.response?.data?.detail || "Erro ao salvar atividade.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const totalPoints = selected.reduce((sum, s) => sum + (Number(s.points) || 0), 0);
+  const firstError = Object.values(stepErrors)[0];
+
+  if (loadingInitial) {
+    return (
+      <Box sx={{ py: 10, textAlign: "center" }}>
+        <CircularProgress sx={{ color: "#4F46E5" }} />
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+          Carregando dados da atividade...
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ maxWidth: 540 }}>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: '#1E293B' }}>
-        Informações gerais
-      </Typography>
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 2.5 }}>
-        {/* Título */}
-        <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75, color: '#334155' }}>
-            Título da atividade
+    <Box className="fade-in" sx={{ maxWidth: 1080, mx: "auto", pb: 8 }}>
+      {/* Header Principal */}
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1 }}>
+          <Tooltip title="Voltar para lista de atividades">
+            <IconButton size="small" onClick={() => navigate("/atividades")}>
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: "#1E293B" }}>
+            {uuid ? "Editar atividade" : "Nova atividade"}
           </Typography>
-          <TextField
-            id="wizard-titulo"
-            value={data.titulo}
-            onChange={(e) => onChange({ titulo: e.target.value })}
-            required
-            fullWidth
-            placeholder="Ex: Trabalho 02 – Funções"
-            size="small"
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
         </Box>
+        <Typography variant="body1" color="text.secondary" sx={{ ml: 5 }}>
+          Monte a atividade selecionando funções reutilizáveis da biblioteca.
+        </Typography>
+      </Box>
 
-        {/* Descrição */}
-        <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75, color: '#334155' }}>
-            Descrição
-          </Typography>
-          <TextField
-            id="wizard-descricao"
-            value={data.descricao}
-            onChange={(e) => onChange({ descricao: e.target.value })}
-            fullWidth
-            multiline
-            rows={4}
-            placeholder="Descreva o objetivo da atividade..."
-            size="small"
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-        </Box>
+      {/* Stepper Superior Minimalista e Elegante */}
+      <Box
+        component="nav"
+        aria-label="Etapas de criação"
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: { xs: 0.5, sm: 1 },
+          mb: 4,
+          overflowX: "auto",
+          pb: 1,
+          borderBottom: "1px solid #E2E8F0",
+          pt: 1,
+        }}
+      >
+        {STEPS.map((s, i) => {
+          const isActive = step === s.id;
+          const isDone = step > s.id;
+          const isClickable = isDone;
 
-        {/* Tipo da atividade */}
-        <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>
-            Tipo da atividade
-          </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-            {[
-              {
-                value: 'exercicio',
-                title: 'Exercício de prática',
-                desc: 'Atividade para treino e fixação de conteúdo.',
-              },
-              {
-                value: 'prova',
-                title: 'Trabalho avaliativo',
-                desc: 'Atividade que compõe a nota do aluno.',
-              },
-            ].map((opt) => {
-              const selected = data.tipo === opt.value;
-              return (
+          return (
+            <Box key={s.id} sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+              <Box
+                component="button"
+                type="button"
+                onClick={() => isClickable && setStep(s.id)}
+                disabled={!isClickable}
+                aria-current={isActive ? "step" : undefined}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.2,
+                  px: 1.8,
+                  py: 1,
+                  borderRadius: 2,
+                  fontSize: "0.875rem",
+                  fontWeight: isActive ? 700 : 500,
+                  backgroundColor: isActive ? "#EEF2FF" : "transparent",
+                  color: isActive ? "#4F46E5" : isDone ? "#1E293B" : "#94A3B8",
+                  border: "none",
+                  cursor: isClickable ? "pointer" : "default",
+                  transition: "all 0.15s ease",
+                  "&:hover": isClickable
+                    ? { backgroundColor: "#F8FAFC", color: "#4F46E5" }
+                    : {},
+                }}
+              >
                 <Box
-                  key={opt.value}
-                  onClick={() => onChange({ tipo: opt.value })}
                   sx={{
-                    p: 2,
-                    border: '1.5px solid',
-                    borderColor: selected ? '#2D3282' : '#E2E8F0',
-                    borderRadius: 2.5,
-                    cursor: 'pointer',
-                    backgroundColor: selected ? '#F0F2F9' : '#fff',
-                    transition: 'all 0.18s',
-                    '&:hover': { borderColor: '#2D3282' },
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    backgroundColor: isActive
+                      ? "#4F46E5"
+                      : isDone
+                      ? "#10B981"
+                      : "#E2E8F0",
+                    color: isActive || isDone ? "#FFFFFF" : "#64748B",
+                    transition: "all 0.15s",
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Box
-                      sx={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: '50%',
-                        border: '2px solid',
-                        borderColor: selected ? '#2D3282' : '#94A3B8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {selected && (
-                        <Box
+                  {isDone ? <CheckIcon sx={{ fontSize: 14 }} /> : s.id}
+                </Box>
+                <span>{s.label}</span>
+              </Box>
+
+              {i < STEPS.length - 1 && (
+                <Box
+                  sx={{
+                    width: { xs: 16, sm: 32 },
+                    height: 2,
+                    backgroundColor: isDone ? "#A7F3D0" : "#E2E8F0",
+                    mx: 0.5,
+                  }}
+                />
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Banner de Validação */}
+      {firstError && (
+        <Box
+          sx={{
+            mb: 3,
+            p: 2,
+            backgroundColor: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 2.5,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 1.5,
+            color: "#DC2626",
+          }}
+          role="alert"
+        >
+          <ErrorOutlineOutlinedIcon sx={{ fontSize: 20, mt: 0.2 }} />
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Corrija as pendências antes de avançar:
+            </Typography>
+            {Object.values(stepErrors).map((e, idx) => (
+              <Typography key={idx} variant="caption" sx={{ display: "block" }}>
+                • {e}
+              </Typography>
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {/* ─── ETAPA 1: Informações ────────────────────────────────────── */}
+      {step === 1 && (
+        <Card
+          variant="outlined"
+          sx={{
+            borderRadius: 3,
+            p: { xs: 2.5, sm: 3.5 },
+            backgroundColor: "#FFFFFF",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, color: "#1E293B", mb: 0.5 }}>
+            Informações da atividade
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Defina o cabeçalho, os prazos de vigência e o critério de pontuação máxima.
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 720 }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                Título <span style={{ color: "#EF4444" }}>*</span>
+              </Typography>
+              <TextField
+                placeholder="Ex: Trabalho 02 — Estruturas Condicionais e Funções"
+                value={info.title}
+                onChange={(e) => setInfo({ ...info, title: e.target.value })}
+                error={!!stepErrors.title}
+                helperText={stepErrors.title}
+                fullWidth
+                size="small"
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                Descrição ou Instruções
+              </Typography>
+              <TextField
+                placeholder="Descreva o objetivo da atividade e instruções para resolução..."
+                value={info.description}
+                onChange={(e) => setInfo({ ...info, description: e.target.value })}
+                fullWidth
+                multiline
+                rows={3}
+                size="small"
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
+            </Box>
+
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                  Data de abertura <span style={{ color: "#EF4444" }}>*</span>
+                </Typography>
+                <TextField
+                  type="date"
+                  value={info.openDate}
+                  onChange={(e) => setInfo({ ...info, openDate: e.target.value })}
+                  error={!!stepErrors.openDate}
+                  helperText={stepErrors.openDate}
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                  Data de fechamento <span style={{ color: "#EF4444" }}>*</span>
+                </Typography>
+                <TextField
+                  type="date"
+                  value={info.closeDate}
+                  onChange={(e) => setInfo({ ...info, closeDate: e.target.value })}
+                  error={!!stepErrors.closeDate}
+                  helperText={stepErrors.closeDate}
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+            </Box>
+
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                  Pontuação máxima da atividade <span style={{ color: "#EF4444" }}>*</span>
+                </Typography>
+                <TextField
+                  type="number"
+                  inputProps={{ min: 1, max: 1000 }}
+                  value={info.maxPoints}
+                  onChange={(e) => setInfo({ ...info, maxPoints: e.target.value })}
+                  error={!!stepErrors.maxPoints}
+                  helperText={stepErrors.maxPoints || "Nota total de referência para o cálculo proporcional"}
+                  fullWidth
+                  size="small"
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                  Tipo de Atividade
+                </Typography>
+                <Box sx={{ display: "flex", gap: 1.5, mt: 0.5 }}>
+                  {[
+                    { key: "exercicio", label: "Exercício de Prática" },
+                    { key: "prova", label: "Prova Avaliativa" },
+                  ].map((t) => {
+                    const sel = info.tipo === t.key;
+                    return (
+                      <Box
+                        key={t.key}
+                        onClick={() => setInfo({ ...info, tipo: t.key })}
+                        sx={{
+                          flex: 1,
+                          p: 1.5,
+                          borderRadius: 2,
+                          border: "1.5px solid",
+                          borderColor: sel ? "#4F46E5" : "#E2E8F0",
+                          backgroundColor: sel ? "#EEF2FF" : "#FFFFFF",
+                          cursor: "pointer",
+                          textAlign: "center",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: sel ? 700 : 500, color: sel ? "#4F46E5" : "#475569" }}
+                        >
+                          {t.label}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </Card>
+      )}
+
+      {/* ─── ETAPA 2: Funções ────────────────────────────────────────── */}
+      {step === 2 && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+          {/* Banner explicativo contextual */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 1.5,
+              backgroundColor: "#EEF2FF",
+              border: "1px solid #C7D2FE",
+              borderRadius: 2.5,
+              p: 2,
+              color: "#3730A3",
+            }}
+          >
+            <InfoOutlinedIcon sx={{ fontSize: 20, mt: 0.2, color: "#4F46E5" }} />
+            <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+              Você está <strong>adicionando funções existentes</strong> da biblioteca a esta atividade —
+              não criando novas funções. A dificuldade e os casos de teste podem ser ajustados
+              apenas para esta atividade sem modificar a biblioteca global.
+            </Typography>
+          </Box>
+
+          {stepErrors.functions && (
+            <Typography variant="body2" sx={{ color: "#DC2626", fontWeight: 600 }}>
+              {stepErrors.functions}
+            </Typography>
+          )}
+
+          {/* Cards das funções já selecionadas */}
+          {selected.map((sf, idx) => {
+            const diffBadge = getDifficultyBadge(sf.difficulty);
+            const isDiffChanged = sf.difficulty !== sf.defaultDifficulty;
+
+            return (
+              <Card
+                key={sf.fnId}
+                variant="outlined"
+                sx={{
+                  borderRadius: 3,
+                  p: 2.5,
+                  backgroundColor: "#FFFFFF",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                  border: "1px solid #E2E8F0",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 2,
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 0.5, flexWrap: "wrap" }}>
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ fontWeight: 700, fontFamily: "monospace", color: "#0F172A" }}
+                      >
+                        {idx + 1}. {sf.signature}
+                      </Typography>
+                      {isDiffChanged && (
+                        <Chip
+                          label="Dificuldade ajustada"
+                          size="small"
                           sx={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            backgroundColor: '#2D3282',
+                            backgroundColor: "#EEF2FF",
+                            color: "#4F46E5",
+                            fontWeight: 600,
+                            fontSize: "0.7rem",
+                            height: 20,
                           }}
                         />
                       )}
                     </Box>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontWeight: 700, color: selected ? '#2D3282' : '#1E293B' }}
-                    >
-                      {opt.title}
+                    <Typography variant="body2" color="text.secondary">
+                      {sf.description || "Função da biblioteca de programação."}
                     </Typography>
                   </Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block', pl: 3.25, lineHeight: 1.4 }}
-                  >
-                    {opt.desc}
-                  </Typography>
-                </Box>
-              );
-            })}
-          </Box>
-        </Box>
 
-        {/* Data de fechamento */}
-        <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75, color: '#334155' }}>
-            Data de fechamento (opcional)
-          </Typography>
-          <TextField
-            id="wizard-fechamento"
-            type="datetime-local"
-            value={data.dataFechamento}
-            onChange={(e) => onChange({ dataFechamento: e.target.value })}
-            fullWidth
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-        </Box>
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>
-        <Button
-          id="wizard-step1-continuar"
-          type="submit"
-          variant="contained"
-          disabled={!data.titulo.trim()}
-          sx={{
-            minWidth: 140,
-            py: 1,
-            borderRadius: 2,
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            fontWeight: 600,
-          }}
-        >
-          Continuar
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── FuncaoFormDialog ────────────────────────────────────────────────────────
-
-function FuncaoFormDialog({ open, onClose, onSave, initialData }) {
-  const INITIAL = {
-    nomeFuncao: '',
-    descricao: '',
-    pontos: 4,
-    retorno: 'int',
-    dificuldade: 'medio',
-    parametros: [{ nome: 'n', tipo: 'int' }],
-  };
-
-  const [form, setForm] = useState(INITIAL);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      if (initialData) {
-        setForm({
-          nomeFuncao: initialData.nomeFuncao || initialData.nome_funcao || '',
-          descricao: initialData.descricao || '',
-          pontos: initialData.pontos !== undefined ? initialData.pontos : 4,
-          retorno: initialData.retorno?.tipo || initialData.retorno || 'int',
-          dificuldade: initialData.dificuldade || 'medio',
-          parametros: initialData.parametros?.length
-            ? initialData.parametros.map((p) => ({ nome: p.nome, tipo: p.tipo }))
-            : [{ nome: 'n', tipo: 'int' }],
-        });
-      } else {
-        setForm(INITIAL);
-      }
-    }
-  }, [open, initialData]);
-
-  const nameValid = !form.nomeFuncao || /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(form.nomeFuncao.trim());
-
-  const doSave = async () => {
-    if (!form.nomeFuncao.trim() || !nameValid) return;
-    setSaving(true);
-    try {
-      await onSave({
-        nomeFuncao: form.nomeFuncao.trim(),
-        descricao: form.descricao?.trim() || null,
-        pontos: Number(form.pontos) || 0,
-        retorno: { tipo: form.retorno },
-        dificuldade: form.dificuldade,
-        dicas: [],
-        parametros: form.parametros.filter((p) => p.nome && p.nome.trim()),
-      });
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await doSave();
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        component: 'form',
-        onSubmit: handleSubmit,
-        sx: { borderRadius: 3 },
-      }}
-    >
-      <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#1E293B' }}>
-        {initialData ? 'Editar Função' : 'Adicionar Função'}
-      </DialogTitle>
-      <DialogContent dividers sx={{ borderColor: '#E2E8F0' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-          <TextField
-            label="Nome da Função"
-            value={form.nomeFuncao}
-            onChange={(e) => setForm((p) => ({ ...p, nomeFuncao: e.target.value }))}
-            required
-            fullWidth
-            autoFocus
-            placeholder="ex: fatorial"
-            error={form.nomeFuncao.length > 0 && !nameValid}
-            helperText={
-              form.nomeFuncao.length > 0 && !nameValid
-                ? 'Identificador C válido (ex: fatorial, soma_array)'
-                : ''
-            }
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-
-          <TextField
-            label="Descrição"
-            value={form.descricao}
-            onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))}
-            fullWidth
-            multiline
-            rows={2}
-            placeholder="O que a função deve fazer..."
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
-            <TextField
-              label="Pontos"
-              type="number"
-              value={form.pontos}
-              onChange={(e) => setForm((p) => ({ ...p, pontos: e.target.value }))}
-              inputProps={{ min: 0, step: 0.5 }}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            />
-            <TextField
-              label="Retorno"
-              select
-              value={form.retorno}
-              onChange={(e) => setForm((p) => ({ ...p, retorno: e.target.value }))}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            >
-              {C_TYPES.map((t) => (
-                <MenuItem key={t} value={t}>
-                  {t}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Dificuldade"
-              select
-              value={form.dificuldade}
-              onChange={(e) => setForm((p) => ({ ...p, dificuldade: e.target.value }))}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            >
-              <MenuItem value="facil">Fácil</MenuItem>
-              <MenuItem value="medio">Médio</MenuItem>
-              <MenuItem value="dificil">Difícil</MenuItem>
-            </TextField>
-          </Box>
-
-          {/* Parâmetros */}
-          <Box>
-            <Box
-              sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
-            >
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155' }}>
-                Parâmetros
-              </Typography>
-              <Button
-                size="small"
-                startIcon={<AddCircleIcon />}
-                onClick={() =>
-                  setForm((p) => ({
-                    ...p,
-                    parametros: [...p.parametros, { nome: '', tipo: 'int' }],
-                  }))
-                }
-                sx={{ textTransform: 'none', color: '#2D3282', fontWeight: 600 }}
-              >
-                Adicionar
-              </Button>
-            </Box>
-            {form.parametros.map((param, idx) => (
-              <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-                <TextField
-                  label="Nome"
-                  value={param.nome}
-                  onChange={(e) =>
-                    setForm((p) => {
-                      const ps = [...p.parametros];
-                      ps[idx] = { ...ps[idx], nome: e.target.value };
-                      return { ...p, parametros: ps };
-                    })
-                  }
-                  size="small"
-                  sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                  placeholder="ex: n"
-                />
-                <TextField
-                  label="Tipo"
-                  select
-                  value={param.tipo}
-                  onChange={(e) =>
-                    setForm((p) => {
-                      const ps = [...p.parametros];
-                      ps[idx] = { ...ps[idx], tipo: e.target.value };
-                      return { ...p, parametros: ps };
-                    })
-                  }
-                  size="small"
-                  sx={{ width: 110, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                >
-                  {C_TYPES.map((t) => (
-                    <MenuItem key={t} value={t}>
-                      {t}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() =>
-                    setForm((p) => ({
-                      ...p,
-                      parametros: p.parametros.filter((_, i) => i !== idx),
-                    }))
-                  }
-                  disabled={form.parametros.length <= 1}
-                >
-                  <RemoveCircleIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            ))}
-          </Box>
-
-          {/* Preview */}
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: '#F8FAFC',
-              border: '1px solid #E2E8F0',
-              fontFamily: 'monospace',
-              fontSize: '0.85rem',
-            }}
-          >
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}
-            >
-              Assinatura C:
-            </Typography>
-            <code style={{ color: '#0F172A', fontWeight: 600 }}>
-              {form.retorno} {form.nomeFuncao.trim() || '???'}(
-              {form.parametros
-                .filter((p) => p.nome && p.nome.trim())
-                .map((p) => `${p.tipo} ${p.nome.trim()}`)
-                .join(', ')}
-              )
-            </code>
-          </Box>
-        </Box>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={saving} sx={{ textTransform: 'none' }}>
-          Cancelar
-        </Button>
-        <Button
-          type="button"
-          onClick={doSave}
-          variant="contained"
-          disabled={saving || !form.nomeFuncao.trim() || !nameValid}
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
-          sx={{
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            borderRadius: 2,
-            px: 3,
-          }}
-        >
-          {saving ? 'Salvando...' : 'Salvar'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ─── Step 2: Funções ─────────────────────────────────────────────────────────
-
-function StepFuncoes({ atividadeUuid, funcoes, onFuncaoAdded, onBack, onNext }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingFuncao, setEditingFuncao] = useState(null);
-  const { showSuccess, showError } = useSnackbar();
-
-  const handleSave = async (data) => {
-    try {
-      if (editingFuncao?.uuid) {
-        await updateFuncao(editingFuncao.uuid, data);
-        showSuccess('Função atualizada!');
-      } else {
-        await createFuncao(atividadeUuid, data);
-        showSuccess('Função adicionada!');
-      }
-      await onFuncaoAdded();
-      setDialogOpen(false);
-      setEditingFuncao(null);
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao salvar função');
-      throw err;
-    }
-  };
-
-  const handleDelete = async (funcaoUuid) => {
-    try {
-      await deleteFuncao(funcaoUuid);
-      showSuccess('Função removida com sucesso!');
-      await onFuncaoAdded();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao remover função');
-    }
-  };
-
-  const paramLabel = (params = []) => {
-    if (!params || !params.length) return '—';
-    return params.map((p) => `${p.nome} : ${p.tipo}`).join(', ');
-  };
-
-  return (
-    <Box sx={{ maxWidth: 640 }}>
-      {/* Header da etapa */}
-      <Box
-        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}
-      >
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>
-            Funções da atividade
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-            Adicione as funções que o aluno deverá implementar.
-          </Typography>
-        </Box>
-        <Button
-          id="wizard-add-funcao"
-          variant="outlined"
-          startIcon={<AddIcon />}
-          size="small"
-          onClick={() => {
-            setEditingFuncao(null);
-            setDialogOpen(true);
-          }}
-          sx={{
-            flexShrink: 0,
-            textTransform: 'none',
-            borderRadius: 2,
-            borderColor: '#2D3282',
-            color: '#2D3282',
-            fontWeight: 600,
-            '&:hover': {
-              borderColor: '#1E2260',
-              backgroundColor: 'rgba(45, 50, 130, 0.04)',
-            },
-          }}
-        >
-          + Adicionar função
-        </Button>
-      </Box>
-
-      {/* Lista de funções */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 3 }}>
-        {funcoes.length === 0 ? (
-          <Box
-            sx={{
-              border: '2px dashed #CBD5E1',
-              borderRadius: 3,
-              py: 6,
-              textAlign: 'center',
-              backgroundColor: '#FAFCFF',
-            }}
-          >
-            <FunctionsIcon sx={{ fontSize: 44, color: '#94A3B8', mb: 1 }} />
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-              Nenhuma função adicionada ainda.
-            </Typography>
-            <Button
-              variant="text"
-              size="small"
-              onClick={() => {
-                setEditingFuncao(null);
-                setDialogOpen(true);
-              }}
-              sx={{ mt: 1, textTransform: 'none', color: '#2D3282', fontWeight: 600 }}
-            >
-              + Adicionar primeira função
-            </Button>
-          </Box>
-        ) : (
-          funcoes.map((fn) => (
-            <Card
-              key={fn.uuid}
-              sx={{
-                borderRadius: 3,
-                border: '1.5px solid #EDF2F7',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                transition: 'all 0.2s',
-                '&:hover': {
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
-                  borderColor: '#CBD5E1',
-                },
-              }}
-            >
-              <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                  {/* Ícone Roxinho */}
-                  <Box
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => handleRemoveFunction(sf.fnId)}
                     sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 2.5,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#EEF2FF',
-                      color: '#4F46E5',
+                      textTransform: "none",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
                       flexShrink: 0,
+                      "&:hover": { backgroundColor: "#FEF2F2" },
                     }}
                   >
-                    <DataObjectIcon sx={{ fontSize: 22 }} />
+                    Remover
+                  </Button>
+                </Box>
+
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "1.2fr 1fr" },
+                    gap: 3,
+                    mt: 3,
+                    pt: 2.5,
+                    borderTop: "1px solid #F1F5F9",
+                  }}
+                >
+                  {/* Seletor de Dificuldade Segmentado */}
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      sx={{ fontWeight: 700, color: "#475569", mb: 1, display: "block" }}
+                    >
+                      Dificuldade nesta atividade:
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      {DIFFICULTIES.map((d) => {
+                        const isChosen = sf.difficulty === d.key;
+                        return (
+                          <Box
+                            key={d.key}
+                            component="button"
+                            type="button"
+                            onClick={() => updateFn(sf.fnId, { difficulty: d.key })}
+                            sx={{
+                              flex: 1,
+                              py: 0.8,
+                              px: 1,
+                              borderRadius: 2,
+                              border: "1.5px solid",
+                              borderColor: isChosen ? d.color : "#E2E8F0",
+                              backgroundColor: isChosen ? d.bg : "#FFFFFF",
+                              color: isChosen ? d.color : "#64748B",
+                              fontWeight: isChosen ? 700 : 500,
+                              fontSize: "0.8rem",
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                              "&:hover": { borderColor: d.color },
+                            }}
+                          >
+                            {d.label}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                      Padrão original da biblioteca:{" "}
+                      <strong>{getDifficultyBadge(sf.defaultDifficulty).label}</strong>
+                    </Typography>
                   </Box>
 
-                  {/* Detalhes da função */}
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  {/* Campo de Pontos */}
+                  <Box>
                     <Typography
-                      variant="body1"
+                      variant="caption"
+                      sx={{ fontWeight: 700, color: "#475569", mb: 1, display: "block" }}
+                    >
+                      Pontuação nesta atividade:
+                    </Typography>
+                    <TextField
+                      type="number"
+                      inputProps={{ min: 0.5, step: 0.5 }}
+                      value={sf.points}
+                      onChange={(e) =>
+                        updateFn(sf.fnId, { points: parseFloat(e.target.value) || 0 })
+                      }
+                      error={!!stepErrors[`pts_${sf.fnId}`]}
+                      helperText={stepErrors[`pts_${sf.fnId}`]}
+                      size="small"
+                      sx={{ maxWidth: 160, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                  </Box>
+                </Box>
+              </Card>
+            );
+          })}
+
+          {/* Botão de Adicionar Função */}
+          <Box
+            component="button"
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            sx={{
+              width: "100%",
+              py: 3,
+              borderRadius: 3,
+              border: "2px dashed #CBD5E1",
+              backgroundColor: "#FAFAFA",
+              color: "#64748B",
+              fontWeight: 600,
+              fontSize: "0.95rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1.5,
+              cursor: "pointer",
+              transition: "all 0.18s",
+              "&:hover": {
+                borderColor: "#4F46E5",
+                color: "#4F46E5",
+                backgroundColor: "#F8FAFC",
+              },
+            }}
+          >
+            <AddIcon sx={{ fontSize: 22 }} />
+            Adicionar função da biblioteca
+          </Box>
+        </Box>
+      )}
+
+      {/* ─── ETAPA 3: Casos de teste ──────────────────────────────────── */}
+      {step === 3 && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 1.5,
+              backgroundColor: "#EEF2FF",
+              border: "1px solid #C7D2FE",
+              borderRadius: 2.5,
+              p: 2,
+              color: "#3730A3",
+            }}
+          >
+            <InfoOutlinedIcon sx={{ fontSize: 20, mt: 0.2, color: "#4F46E5" }} />
+            <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+              Selecione quais casos de teste da função serão usados nesta atividade e defina a
+              visibilidade de cada um. <strong>Somente os casos selecionados serão avaliados</strong>;
+              os casos ocultos avaliam a submissão, mas o aluno não vê as entradas/saídas antes da entrega.
+            </Typography>
+          </Box>
+
+          {selected.map((sf) => {
+            const chosenCount = sf.cases.filter((c) => c.selected).length;
+            const visibleCount = sf.cases.filter((c) => c.selected && c.visible).length;
+            const err = stepErrors[`cases_${sf.fnId}`];
+            const diffBadge = getDifficultyBadge(sf.difficulty);
+
+            return (
+              <Card
+                key={sf.fnId}
+                variant="outlined"
+                sx={{
+                  borderRadius: 3,
+                  p: 3,
+                  backgroundColor: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    mb: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ fontWeight: 700, fontFamily: "monospace", color: "#0F172A" }}
+                    >
+                      {sf.signature}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {chosenCount} de {sf.cases.length} casos usados · {visibleCount} visíve
+                      {visibleCount !== 1 ? "is" : "l"}
+                    </Typography>
+                  </Box>
+
+                  <Chip
+                    label={diffBadge.label}
+                    size="small"
+                    sx={{
+                      backgroundColor: diffBadge.bg,
+                      color: diffBadge.color,
+                      border: `1px solid ${diffBadge.border}`,
+                      fontWeight: 700,
+                    }}
+                  />
+                </Box>
+
+                {err && (
+                  <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                    {err}
+                  </Alert>
+                )}
+
+                {/* Tabela de Casos */}
+                {sf.cases.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic", py: 2 }}>
+                    Esta função não possui casos de teste cadastrados na biblioteca.
+                  </Typography>
+                ) : (
+                  <Box sx={{ overflowX: "auto" }}>
+                    <Box
+                      component="table"
                       sx={{
-                        fontWeight: 700,
-                        color: '#0F172A',
-                        fontSize: '1rem',
-                        fontFamily: 'monospace',
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        textAlign: "left",
+                        fontSize: "0.85rem",
                       }}
                     >
-                      {fn.nomeFuncao || fn.nome_funcao}
+                      <Box component="thead">
+                        <Box component="tr" sx={{ borderBottom: "1.5px solid #E2E8F0" }}>
+                          <Box component="th" sx={{ py: 1.5, px: 1.5, width: 60, color: "#64748B" }}>
+                            Usar
+                          </Box>
+                          <Box component="th" sx={{ py: 1.5, px: 1.5, width: 60, color: "#64748B" }}>
+                            Caso
+                          </Box>
+                          <Box component="th" sx={{ py: 1.5, px: 1.5, color: "#64748B" }}>
+                            Entrada
+                          </Box>
+                          <Box component="th" sx={{ py: 1.5, px: 1.5, color: "#64748B" }}>
+                            Saída esperada
+                          </Box>
+                          <Box component="th" sx={{ py: 1.5, px: 1.5, width: 140, color: "#64748B" }}>
+                            Visibilidade
+                          </Box>
+                        </Box>
+                      </Box>
+                      <Box component="tbody">
+                        {sf.cases.map((tc, idx) => (
+                          <Box
+                            component="tr"
+                            key={tc.id}
+                            sx={{
+                              borderBottom: "1px solid #F1F5F9",
+                              opacity: tc.selected ? 1 : 0.4,
+                              backgroundColor: tc.selected ? "transparent" : "#F8FAFC",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            <Box component="td" sx={{ py: 1.5, px: 1.5 }}>
+                              <Box
+                                component="button"
+                                type="button"
+                                role="checkbox"
+                                aria-checked={tc.selected}
+                                onClick={() =>
+                                  updateCase(sf.fnId, tc.id, { selected: !tc.selected })
+                                }
+                                sx={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 1,
+                                  border: "1.5px solid",
+                                  borderColor: tc.selected ? "#4F46E5" : "#CBD5E1",
+                                  backgroundColor: tc.selected ? "#4F46E5" : "#FFFFFF",
+                                  color: "#FFFFFF",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s",
+                                }}
+                              >
+                                {tc.selected && <CheckIcon sx={{ fontSize: 16 }} />}
+                              </Box>
+                            </Box>
+                            <Box component="td" sx={{ py: 1.5, px: 1.5, color: "#64748B", fontWeight: 600 }}>
+                              #{idx + 1}
+                            </Box>
+                            <Box
+                              component="td"
+                              sx={{
+                                py: 1.5,
+                                px: 1.5,
+                                fontFamily: "monospace",
+                                color: "#0F172A",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {tc.inputStr || "{}"}
+                            </Box>
+                            <Box
+                              component="td"
+                              sx={{
+                                py: 1.5,
+                                px: 1.5,
+                                fontFamily: "monospace",
+                                color: "#0F172A",
+                                fontWeight: 600,
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {tc.outputStr || "—"}
+                            </Box>
+                            <Box component="td" sx={{ py: 1.5, px: 1.5 }}>
+                              <Box
+                                component="button"
+                                type="button"
+                                disabled={!tc.selected}
+                                onClick={() =>
+                                  updateCase(sf.fnId, tc.id, { visible: !tc.visible })
+                                }
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  px: 1.5,
+                                  py: 0.5,
+                                  borderRadius: 4,
+                                  border: "1px solid",
+                                  borderColor: tc.visible ? "#A7F3D0" : "#E2E8F0",
+                                  backgroundColor: tc.visible ? "#ECFDF5" : "#F1F5F9",
+                                  color: tc.visible ? "#059669" : "#64748B",
+                                  cursor: tc.selected ? "pointer" : "not-allowed",
+                                  transition: "all 0.15s",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                }}
+                              >
+                                {tc.visible ? (
+                                  <>
+                                    <VisibilityIcon sx={{ fontSize: 14 }} /> Visível
+                                  </>
+                                ) : (
+                                  <>
+                                    <VisibilityOffIcon sx={{ fontSize: 14 }} /> Oculto
+                                  </>
+                                )}
+                              </Box>
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+              </Card>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* ─── ETAPA 4: Configurações ──────────────────────────────────── */}
+      {step === 4 && (
+        <Card
+          variant="outlined"
+          sx={{
+            borderRadius: 3,
+            p: { xs: 2.5, sm: 3.5 },
+            backgroundColor: "#FFFFFF",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, color: "#1E293B", mb: 0.5 }}>
+            Configurações da atividade
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Defina regras de submissão e segurança de código para os alunos.
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 640 }}>
+            {/* Switch 1: Múltiplas submissões */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                py: 2,
+                borderBottom: "1px solid #E2E8F0",
+              }}
+            >
+              <Box sx={{ pr: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
+                  Permitir múltiplas submissões
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  O aluno poderá enviar mais de uma tentativa de código para testar e aprimorar a solução.
+                </Typography>
+              </Box>
+              <Switch
+                checked={config.allowMultiple}
+                onChange={(e) => setConfig({ ...config, allowMultiple: e.target.checked })}
+                color="primary"
+              />
+            </Box>
+
+            {config.allowMultiple && (
+              <Box sx={{ pl: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
+                  Número máximo de tentativas por função
+                </Typography>
+                <TextField
+                  type="number"
+                  inputProps={{ min: 1, max: 50 }}
+                  value={config.maxAttempts}
+                  onChange={(e) => setConfig({ ...config, maxAttempts: e.target.value })}
+                  size="small"
+                  sx={{ maxWidth: 160, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+            )}
+
+            {/* Switch 2: Testes ocultos visíveis após envio */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                py: 2,
+                borderBottom: "1px solid #E2E8F0",
+              }}
+            >
+              <Box sx={{ pr: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
+                  Testes ocultos visíveis após submissão
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  O aluno poderá conferir os relatórios detalhados dos casos ocultos após a entrega final.
+                </Typography>
+              </Box>
+              <Switch
+                checked={config.testsVisible}
+                onChange={(e) => setConfig({ ...config, testsVisible: e.target.checked })}
+                color="primary"
+              />
+            </Box>
+
+            {/* Switch 3: Bloquear Copiar e Colar (Paste) */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                py: 2,
+              }}
+            >
+              <Box sx={{ pr: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
+                  Bloquear Copiar e Colar (Paste)
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Impede a colagem de trechos externos no editor Monaco, incentivando escrita autêntica.
+                </Typography>
+              </Box>
+              <Switch
+                checked={config.bloquearPaste}
+                onChange={(e) => setConfig({ ...config, bloquearPaste: e.target.checked })}
+                color="primary"
+              />
+            </Box>
+          </Box>
+        </Card>
+      )}
+
+      {/* ─── ETAPA 5: Revisão ────────────────────────────────────────── */}
+      {step === 5 && (() => {
+        const totalUsedCases = selected.reduce(
+          (s, sf) => s + sf.cases.filter((c) => c.selected).length,
+          0
+        );
+        const allFnsHaveCases =
+          selected.length > 0 && selected.every((sf) => sf.cases.some((c) => c.selected));
+        const periodValid = !!info.openDate && !!info.closeDate && info.closeDate >= info.openDate;
+        const ptsMatch = Math.abs(totalPoints - Number(info.maxPoints || 0)) < 0.01;
+
+        const checks = [
+          {
+            label: "Informações principais preenchidas",
+            ok: !!info.title.trim() && !!info.openDate && !!info.closeDate,
+          },
+          {
+            label: `${selected.length} funç${selected.length !== 1 ? "ões" : "ão"} selecionada${
+              selected.length !== 1 ? "s" : ""
+            }`,
+            ok: selected.length > 0,
+          },
+          {
+            label: `${totalUsedCases} caso${totalUsedCases !== 1 ? "s" : ""} de teste em uso`,
+            ok: totalUsedCases > 0 && allFnsHaveCases,
+          },
+          { label: "Período de vigência válido", ok: periodValid },
+          {
+            label: `Soma dos pesos: ${totalPoints} / ${info.maxPoints} pts`,
+            ok: ptsMatch,
+          },
+        ];
+
+        return (
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: 3 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {/* Resumo da Atividade */}
+              <Card variant="outlined" sx={{ borderRadius: 3, p: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B", mb: 2 }}>
+                  Resumo da atividade
+                </Typography>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                    gap: 2.5,
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Título
                     </Typography>
-                    {fn.descricao && (
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
+                      {info.title || "—"}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Pontuação máxima
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
+                      {info.maxPoints} pts
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Abertura
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
+                      {info.openDate
+                        ? new Date(info.openDate + "T12:00:00").toLocaleDateString("pt-BR")
+                        : "—"}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Fechamento
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
+                      {info.closeDate
+                        ? new Date(info.closeDate + "T12:00:00").toLocaleDateString("pt-BR")
+                        : "—"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ gridColumn: { sm: "span 2" } }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Múltiplas submissões
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
+                      {config.allowMultiple
+                        ? `Sim (máximo de ${config.maxAttempts} tentativas por função)`
+                        : "Não (tentativa única)"}
+                    </Typography>
+                  </Box>
+                  {info.description && (
+                    <Box sx={{ gridColumn: { sm: "span 2" } }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Descrição
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#334155", mt: 0.25 }}>
+                        {info.description}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Card>
+
+              {/* Lista de Funções */}
+              <Card variant="outlined" sx={{ borderRadius: 3, p: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B", mb: 2 }}>
+                  Funções configuradas ({selected.length})
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                  {selected.map((sf, idx) => {
+                    const chosen = sf.cases.filter((c) => c.selected).length;
+                    const visibleCount = sf.cases.filter((c) => c.selected && c.visible).length;
+                    const diffBadge = getDifficultyBadge(sf.difficulty);
+
+                    return (
+                      <Box
+                        key={sf.fnId}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          py: 1.5,
+                          px: 2,
+                          borderRadius: 2,
+                          backgroundColor: "#F8FAFC",
+                          border: "1px solid #E2E8F0",
+                          gap: 2,
+                        }}
+                      >
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+                          <Box
+                            sx={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 1.5,
+                              backgroundColor: "#EEF2FF",
+                              color: "#4F46E5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <CodeIcon sx={{ fontSize: 18 }} />
+                          </Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: 700, fontFamily: "monospace", color: "#0F172A" }}
+                            >
+                              {idx + 1}. {sf.name}()
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {chosen} caso{chosen !== 1 ? "s" : ""} usados · {visibleCount} visíve
+                              {visibleCount !== 1 ? "is" : "l"}
+                            </Typography>
+                          </Box>
+                        </Box>
+
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
+                          <Chip
+                            label={diffBadge.label}
+                            size="small"
+                            sx={{
+                              backgroundColor: diffBadge.bg,
+                              color: diffBadge.color,
+                              fontWeight: 700,
+                              fontSize: "0.75rem",
+                              height: 22,
+                            }}
+                          />
+                          <Chip
+                            label={`${sf.points} pts`}
+                            size="small"
+                            sx={{
+                              backgroundColor: "#EEF2FF",
+                              color: "#4F46E5",
+                              fontWeight: 700,
+                              fontSize: "0.75rem",
+                              height: 22,
+                            }}
+                          />
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Card>
+            </Box>
+
+            {/* Checklist de Validação Lateral */}
+            <Box>
+              <Card variant="outlined" sx={{ borderRadius: 3, p: 3, position: "sticky", top: 24 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B", mb: 2 }}>
+                  Validação da atividade
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                  {checks.map((c, i) => (
+                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                      <Box
+                        sx={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: "50%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          backgroundColor: c.ok ? "#10B981" : "#FEF2F2",
+                          color: c.ok ? "#FFFFFF" : "#EF4444",
+                          border: c.ok ? "none" : "1px solid #FECACA",
+                        }}
+                      >
+                        {c.ok ? (
+                          <CheckIcon sx={{ fontSize: 13 }} />
+                        ) : (
+                          <CloseIcon sx={{ fontSize: 13 }} />
+                        )}
+                      </Box>
                       <Typography
                         variant="body2"
-                        color="text.secondary"
-                        sx={{ mt: 0.25, mb: 2, fontSize: '0.85rem' }}
+                        sx={{
+                          fontWeight: c.ok ? 500 : 600,
+                          color: c.ok ? "#1E293B" : "#DC2626",
+                          fontSize: "0.85rem",
+                        }}
                       >
-                        {fn.descricao}
+                        {c.label}
                       </Typography>
-                    )}
+                    </Box>
+                  ))}
+                </Box>
+
+                {checks.every((c) => c.ok) ? (
+                  <Box
+                    sx={{
+                      mt: 3,
+                      pt: 2.5,
+                      borderTop: "1px solid #E2E8F0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      color: "#10B981",
+                    }}
+                  >
+                    <CheckIcon sx={{ fontSize: 18 }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      Pronta para ser publicada
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      mt: 3,
+                      pt: 2.5,
+                      borderTop: "1px solid #E2E8F0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      color: "#F59E0B",
+                    }}
+                  >
+                    <HelpOutlineOutlinedIcon sx={{ fontSize: 18 }} />
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      Você ainda pode salvar como rascunho se desejar.
+                    </Typography>
+                  </Box>
+                )}
+              </Card>
+            </Box>
+          </Box>
+        );
+      })()}
+
+      {/* Barra de Navegação Inferior */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mt: 4,
+          pt: 3,
+          borderTop: "1px solid #E2E8F0",
+        }}
+      >
+        <Button
+          variant="outlined"
+          onClick={() => (step > 1 ? setStep(step - 1) : navigate("/atividades"))}
+          startIcon={<ArrowBackIcon />}
+          sx={{
+            borderRadius: 2,
+            textTransform: "none",
+            fontWeight: 600,
+            borderColor: "#CBD5E1",
+            color: "#475569",
+            "&:hover": { borderColor: "#94A3B8", backgroundColor: "#F8FAFC" },
+          }}
+        >
+          {step === 1 ? "Cancelar" : "Anterior"}
+        </Button>
+
+        <Box sx={{ display: "flex", gap: 1.5 }}>
+          {step === 5 ? (
+            <>
+              <Button
+                variant="outlined"
+                onClick={() => handleSave(false)}
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={16} /> : <SaveOutlinedIcon />}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontWeight: 600,
+                  borderColor: "#CBD5E1",
+                  color: "#475569",
+                  "&:hover": { borderColor: "#94A3B8" },
+                }}
+              >
+                Salvar rascunho
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <PublishIcon />}
+                sx={{
+                  borderRadius: 2,
+                  backgroundColor: "#4F46E5",
+                  fontWeight: 700,
+                  textTransform: "none",
+                  px: 3,
+                  "&:hover": { backgroundColor: "#4338CA" },
+                }}
+              >
+                {saving ? "Publicando..." : "Publicar atividade"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="contained"
+              onClick={handleNext}
+              endIcon={<ArrowForwardIcon />}
+              sx={{
+                borderRadius: 2,
+                backgroundColor: "#4F46E5",
+                fontWeight: 700,
+                textTransform: "none",
+                px: 3,
+                "&:hover": { backgroundColor: "#4338CA" },
+              }}
+            >
+              Próximo
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      {/* Modal / Dialog de Seleção de Função da Biblioteca */}
+      <Dialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: "#1E293B", pb: 1 }}>
+          Adicionar função da biblioteca
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+            Selecione uma função existente cadastrada na biblioteca para compor a atividade.
+          </Typography>
+
+          <TextField
+            placeholder="Pesquisar função por nome ou descrição..."
+            value={pickerSearch}
+            onChange={(e) => setPickerSearch(e.target.value)}
+            fullWidth
+            size="small"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 2.5, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          />
+
+          {loadingLib ? (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <CircularProgress size={28} sx={{ color: "#4F46E5" }} />
+            </Box>
+          ) : availableToAdd.length === 0 ? (
+            <Box sx={{ textAlign: "center", py: 5 }}>
+              <Typography variant="body2" color="text.secondary">
+                Todas as funções da biblioteca já foram adicionadas a esta atividade.
+              </Typography>
+              <Button
+                component={Link}
+                to="/funcoes"
+                variant="text"
+                sx={{ textTransform: "none", fontWeight: 600, mt: 1, color: "#4F46E5" }}
+              >
+                Criar nova função na biblioteca →
+              </Button>
+            </Box>
+          ) : filteredAvailable.length === 0 ? (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Typography variant="body2" color="text.secondary">
+                Nenhuma função encontrada com o termo "{pickerSearch}".
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, maxHeight: 380, overflowY: "auto", pr: 0.5 }}>
+              {filteredAvailable.map((fn) => {
+                const diff = getDifficultyBadge(fn.dificuldadePadrao || fn.dificuldade_padrao);
+                const testCasesCount =
+                  fn.totalCasosTeste ??
+                  fn.total_casos_teste ??
+                  (fn.casosTeste || fn.casos_teste || []).length;
+                const isAddingThis = addingFnId === fn.uuid;
+
+                return (
+                  <Box
+                    key={fn.uuid}
+                    component="button"
+                    type="button"
+                    disabled={isAddingThis}
+                    onClick={async () => {
+                      await handleAddFunction(fn);
+                      if (availableToAdd.length === 1) setPickerOpen(false);
+                    }}
+                    sx={{
+                      width: "100%",
+                      p: 2,
+                      borderRadius: 2.5,
+                      border: "1.5px solid #E2E8F0",
+                      backgroundColor: "#FFFFFF",
+                      textAlign: "left",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: isAddingThis ? "wait" : "pointer",
+                      opacity: isAddingThis ? 0.7 : 1,
+                      transition: "all 0.15s",
+                      "&:hover": {
+                        borderColor: "#4F46E5",
+                        backgroundColor: "#F8FAFC",
+                      },
+                    }}
+                  >
+                    <Box sx={{ minWidth: 0, pr: 2 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 0.5 }}>
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 700, fontFamily: "monospace", color: "#0F172A" }}
+                        >
+                          {fn.nomeFuncao || fn.nome_funcao}()
+                        </Typography>
+                        <Chip
+                          label={diff.label}
+                          size="small"
+                          sx={{
+                            backgroundColor: diff.bg,
+                            color: diff.color,
+                            fontWeight: 700,
+                            fontSize: "0.7rem",
+                            height: 20,
+                          }}
+                        />
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 1,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {fn.descricao || "Sem descrição"}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.5 }}>
+                        {testCasesCount} casos de teste cadastrados
+                      </Typography>
+                    </Box>
 
                     <Box
                       sx={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, 1fr)',
-                        gap: 2,
-                        mt: fn.descricao ? 0 : 1.5,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                        color: "#4F46E5",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        flexShrink: 0,
                       }}
                     >
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                          sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 0.25 }}
-                        >
-                          Parâmetro
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            fontFamily: 'monospace',
-                            color: '#1E293B',
-                            fontWeight: 600,
-                            fontSize: '0.82rem',
-                          }}
-                        >
-                          {paramLabel(fn.parametros)}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                          sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 0.25 }}
-                        >
-                          Retorno
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            fontFamily: 'monospace',
-                            color: '#1E293B',
-                            fontWeight: 600,
-                            fontSize: '0.82rem',
-                          }}
-                        >
-                          {fn.retorno?.tipo || fn.retorno || '—'}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                          sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 0.25 }}
-                        >
-                          Pontuação
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ color: '#0F172A', fontWeight: 700, fontSize: '0.85rem' }}
-                        >
-                          {Number(fn.pontos).toFixed(1).replace('.', ',')} pontos
-                        </Typography>
-                      </Box>
+                      {isAddingThis ? (
+                        <>
+                          <CircularProgress size={16} sx={{ color: "#4F46E5" }} />
+                          <Typography variant="caption" sx={{ color: "#4F46E5", fontWeight: 700 }}>
+                            Carregando...
+                          </Typography>
+                        </>
+                      ) : (
+                        <>
+                          <AddIcon sx={{ fontSize: 18 }} />
+                          Adicionar
+                        </>
+                      )}
                     </Box>
-                  </Box>
-
-                  {/* Ações: Editar e Excluir */}
-                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-                    <Tooltip title="Editar">
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setEditingFuncao(fn);
-                          setDialogOpen(true);
-                        }}
-                        sx={{
-                          border: '1px solid #E2E8F0',
-                          borderRadius: 2,
-                          color: '#475569',
-                          '&:hover': { backgroundColor: '#F1F5F9' },
-                        }}
-                      >
-                        <EditOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Remover">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(fn.uuid)}
-                        sx={{
-                          border: '1px solid #FEE2E2',
-                          borderRadius: 2,
-                          color: '#EF4444',
-                          '&:hover': { backgroundColor: '#FEF2F2' },
-                        }}
-                      >
-                        <DeleteOutlineOutlinedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </Box>
-
-      {/* Botões de Rodapé */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 5 }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            color: '#475569',
-            borderColor: '#CBD5E1',
-            px: 3,
-            fontWeight: 600,
-            '&:hover': { borderColor: '#94A3B8' },
-          }}
-        >
-          Voltar
-        </Button>
-        <Button
-          id="wizard-step2-continuar"
-          variant="contained"
-          onClick={onNext}
-          disabled={funcoes.length === 0}
-          sx={{
-            borderRadius: 2,
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            px: 4,
-            fontWeight: 600,
-            minWidth: 130,
-          }}
-        >
-          Continuar
-        </Button>
-      </Box>
-
-      {/* Modal Dialog */}
-      <FuncaoFormDialog
-        open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false);
-          setEditingFuncao(null);
-        }}
-        onSave={handleSave}
-        initialData={editingFuncao}
-      />
-    </Box>
-  );
-}
-
-// ─── CasoTesteRow ────────────────────────────────────────────────────────────
-
-function CasoTesteRow({ caso, numero, parametros }) {
-  const inputStr = parametros.length
-    ? parametros.map((p) => String(caso.inputs?.[p.nome] ?? '')).join(', ')
-    : JSON.stringify(caso.inputs ?? {});
-
-  const outputStr =
-    typeof caso.outputEsperado === 'object'
-      ? String(caso.outputEsperado?.valor ?? JSON.stringify(caso.outputEsperado))
-      : String(caso.outputEsperado ?? '');
-
-  const visivel = caso.visivel !== false;
-
-  return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: '40px 1fr 1fr 80px 80px',
-        gap: 1,
-        alignItems: 'center',
-        px: 1.5,
-        py: 1,
-        borderBottom: '1px solid #E2E8F0',
-        '&:last-child': { borderBottom: 'none' },
-      }}
-    >
-      <Typography variant="body2" color="text.secondary">
-        {numero}
-      </Typography>
-      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-        {inputStr}
-      </Typography>
-      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-        {outputStr}
-      </Typography>
-      <Chip
-        label={visivel ? 'Visível' : 'Oculto'}
-        size="small"
-        sx={{
-          fontSize: '0.7rem',
-          fontWeight: 600,
-          backgroundColor: visivel ? '#DCFCE7' : '#FEF3C7',
-          color: visivel ? '#16A34A' : '#D97706',
-          border: 'none',
-        }}
-      />
-      <Box sx={{ display: 'flex', gap: 0.25 }}>
-        <IconButton size="small" disabled>
-          <EditOutlinedIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" color="error" disabled>
-          <DeleteOutlineOutlinedIcon fontSize="small" />
-        </IconButton>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── AddCasoDialog ────────────────────────────────────────────────────────────
-
-function AddCasoDialog({ open, onClose, onSave, funcao }) {
-  const params = funcao?.parametros || [];
-  const [inputs, setInputs] = useState({});
-  const [output, setOutput] = useState('');
-  const [visivel, setVisivel] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      const init = {};
-      params.forEach((p) => (init[p.nome] = ''));
-      setInputs(init);
-      setOutput('');
-      setVisivel(true);
-    }
-  }, [open]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const parsedInputs = {};
-      params.forEach((p) => {
-        const raw = (inputs[p.nome] || '').trim();
-        const tipo = p.tipo || 'int';
-
-        if (tipo.endsWith('[]')) {
-          // Tratar vetores: suporta [7.5, 8.0, 9.0] ou 7.5, 8.0, 9.0
-          try {
-            if (raw.startsWith('[') && raw.endsWith(']')) {
-              parsedInputs[p.nome] = JSON.parse(raw);
-            } else if (raw) {
-              const baseTipo = tipo.slice(0, -2);
-              parsedInputs[p.nome] = raw.split(',').map((item) => {
-                const trimmed = item.trim();
-                const n = Number(trimmed);
-                return baseTipo === 'float' || baseTipo === 'double' || baseTipo === 'int'
-                  ? (isNaN(n) ? trimmed : n)
-                  : trimmed;
-              });
-            } else {
-              parsedInputs[p.nome] = [];
-            }
-          } catch {
-            parsedInputs[p.nome] = raw.split(',').map((x) => x.trim());
-          }
-        } else {
-          const n = Number(raw);
-          parsedInputs[p.nome] = isNaN(n) || raw === '' ? raw : n;
-        }
-      });
-
-      const outRaw = output.trim();
-      const outNum = Number(outRaw);
-      const outVal = isNaN(outNum) || outRaw === '' ? outRaw : outNum;
-
-      await onSave({
-        inputs: parsedInputs,
-        outputEsperado: { valor: outVal },
-        visivel,
-      });
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-      <DialogTitle sx={{ fontWeight: 700, color: '#1E293B' }}>Novo Caso de Teste</DialogTitle>
-      <DialogContent dividers sx={{ borderColor: '#E2E8F0' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          {params.map((p) => (
-            <TextField
-              key={p.nome}
-              label={`${p.nome} (${p.tipo})`}
-              value={inputs[p.nome] || ''}
-              onChange={(e) => setInputs((prev) => ({ ...prev, [p.nome]: e.target.value }))}
-              placeholder={p.tipo.endsWith('[]') ? '[7.5, 8.0, 9.0] ou 7.5, 8.0, 9.0' : 'ex: 3'}
-              helperText={p.tipo.endsWith('[]') ? 'Digite os valores separados por vírgula ou em colchetes [ ]' : ''}
-              fullWidth
-              size="small"
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            />
-          ))}
-          <TextField
-            label="Saída esperada"
-            value={output}
-            onChange={(e) => setOutput(e.target.value)}
-            fullWidth
-            size="small"
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={visivel}
-                onChange={(e) => setVisivel(e.target.checked)}
-                size="small"
-              />
-            }
-            label={
-              <Typography variant="body2">
-                {visivel ? 'Visível para o aluno' : 'Oculto para o aluno'}
-              </Typography>
-            }
-          />
-        </Box>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={saving} sx={{ textTransform: 'none' }}>
-          Cancelar
-        </Button>
-        <Button
-          onClick={handleSave}
-          variant="contained"
-          disabled={saving || !output}
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
-          sx={{
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            borderRadius: 2,
-            px: 3,
-          }}
-        >
-          {saving ? 'Salvando...' : 'Adicionar'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ─── Step 3: Casos de Teste ───────────────────────────────────────────────────
-
-function StepCasosTeste({ funcoes, onBack, onNext }) {
-  const [selectedFuncaoUuid, setSelectedFuncaoUuid] = useState(funcoes[0]?.uuid || '');
-  const [casos, setCasos] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-  const { showSuccess, showError } = useSnackbar();
-
-  const selectedFuncao = funcoes.find((f) => f.uuid === selectedFuncaoUuid);
-
-  const fetchCasos = useCallback(async () => {
-    if (!selectedFuncaoUuid) return;
-    setLoading(true);
-    try {
-      const data = await getCasosTeste(selectedFuncaoUuid);
-      setCasos((prev) => ({ ...prev, [selectedFuncaoUuid]: Array.isArray(data) ? data : [data] }));
-    } catch {
-      setCasos((prev) => ({ ...prev, [selectedFuncaoUuid]: [] }));
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFuncaoUuid]);
-
-  useEffect(() => {
-    fetchCasos();
-  }, [fetchCasos]);
-
-  const handleAddCaso = async (data) => {
-    try {
-      await createCasosTeste(selectedFuncaoUuid, data);
-      showSuccess('Caso de teste adicionado!');
-      fetchCasos();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao adicionar caso');
-      throw err;
-    }
-  };
-
-  const casosList = casos[selectedFuncaoUuid] || [];
-  const totalCasos = Object.values(casos).reduce((acc, list) => acc + (list?.length || 0), 0);
-
-  return (
-    <Box sx={{ maxWidth: 700 }}>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1E293B' }}>
-        Casos de teste
-      </Typography>
-
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* Sidebar: seletor de função */}
-        <Box
-          sx={{
-            width: 190,
-            flexShrink: 0,
-            border: '1.5px solid #EDF2F7',
-            borderRadius: 3,
-            overflow: 'hidden',
-            backgroundColor: '#fff',
-          }}
-        >
-          <Box sx={{ px: 2, py: 1.25, backgroundColor: '#F8FAFC', borderBottom: '1px solid #EDF2F7' }}>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748B' }}>
-              Função selecionada
-            </Typography>
-          </Box>
-          {funcoes.map((fn) => (
-            <Box
-              key={fn.uuid}
-              onClick={() => setSelectedFuncaoUuid(fn.uuid)}
-              sx={{
-                px: 2,
-                py: 1.5,
-                cursor: 'pointer',
-                backgroundColor:
-                  selectedFuncaoUuid === fn.uuid ? '#F0F2F9' : 'transparent',
-                borderLeft: '3px solid',
-                borderColor:
-                  selectedFuncaoUuid === fn.uuid ? '#2D3282' : 'transparent',
-                '&:hover': { backgroundColor: '#F8FAFC' },
-                transition: 'all 0.15s',
-              }}
-            >
-              <Typography
-                variant="body2"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontWeight: selectedFuncaoUuid === fn.uuid ? 700 : 600,
-                  color: selectedFuncaoUuid === fn.uuid ? '#2D3282' : '#1E293B',
-                }}
-              >
-                {fn.nomeFuncao || fn.nome_funcao}
-              </Typography>
-              {fn.descricao && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                  sx={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    maxWidth: 160,
-                    mt: 0.25,
-                  }}
-                >
-                  {fn.descricao}
-                </Typography>
-              )}
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                {(fn.parametros || []).map((p) => (
-                  <Typography
-                    key={p.nome}
-                    variant="caption"
-                    sx={{ fontFamily: 'monospace', color: '#64748B' }}
-                  >
-                    {p.nome}: {p.tipo}
-                  </Typography>
-                ))}
-              </Box>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                Retorno: {fn.retorno?.tipo || fn.retorno || '—'}
-              </Typography>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155' }} display="block">
-                Pontos: {fn.pontos}
-              </Typography>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#2D3282' }} display="block">
-                Total de casos: {(casos[fn.uuid] || []).length}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-
-        {/* Main: tabela de casos */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: 1.5,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B' }}>
-              Casos de teste
-            </Typography>
-            <Button
-              id="wizard-add-caso"
-              variant="outlined"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setAddOpen(true)}
-              disabled={!selectedFuncao}
-              sx={{
-                textTransform: 'none',
-                borderRadius: 2,
-                borderColor: '#2D3282',
-                color: '#2D3282',
-                fontWeight: 600,
-              }}
-            >
-              Adicionar caso
-            </Button>
-          </Box>
-
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
-            Defina os casos que serão utilizados na avaliação.
-          </Typography>
-
-          <Card variant="outlined" sx={{ borderRadius: 2.5, borderColor: '#E2E8F0' }}>
-            {/* Header da tabela */}
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: '40px 1fr 1fr 80px 80px',
-                gap: 1,
-                px: 1.5,
-                py: 1,
-                backgroundColor: '#F8FAFC',
-                borderBottom: '1px solid #E2E8F0',
-              }}
-            >
-              {['#', 'Entrada', 'Saída esperada', 'Visibilidade', 'Ações'].map((h) => (
-                <Typography key={h} variant="caption" sx={{ fontWeight: 700, color: '#64748B' }}>
-                  {h}
-                </Typography>
-              ))}
-            </Box>
-
-            {loading ? (
-              <Box sx={{ py: 3, textAlign: 'center' }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : casosList.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Nenhum caso de teste adicionado.
-                </Typography>
-              </Box>
-            ) : (
-              casosList.map((caso, idx) => (
-                <CasoTesteRow
-                  key={caso.uuid || idx}
-                  caso={caso}
-                  numero={caso.numero ?? idx + 1}
-                  parametros={selectedFuncao?.parametros || []}
-                />
-              ))
-            )}
-          </Card>
-        </Box>
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 5 }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            color: '#475569',
-            borderColor: '#CBD5E1',
-            px: 3,
-            fontWeight: 600,
-          }}
-        >
-          Voltar
-        </Button>
-        <Button
-          id="wizard-step3-continuar"
-          variant="contained"
-          onClick={onNext}
-          disabled={totalCasos === 0}
-          sx={{
-            borderRadius: 2,
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            px: 4,
-            fontWeight: 600,
-            minWidth: 130,
-          }}
-        >
-          Continuar
-        </Button>
-      </Box>
-
-      <AddCasoDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSave={handleAddCaso}
-        funcao={selectedFuncao}
-      />
-    </Box>
-  );
-}
-
-// ─── Step 4: Configurações ────────────────────────────────────────────────────
-
-function StepConfiguracoes({ config, onChange, onBack, onNext }) {
-  return (
-    <Box sx={{ maxWidth: 700 }}>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#1E293B' }}>
-        Configurações da atividade
-      </Typography>
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-        {/* Visibilidade dos casos */}
-        <Card sx={{ borderRadius: 3, border: '1.5px solid #EDF2F7' }}>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: '#1E293B' }}>
-              Visibilidade dos casos de teste
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-              Escolha se os casos serão apresentados ao aluno.
-            </Typography>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {[
-                {
-                  value: true,
-                  icon: <VisibilityIcon sx={{ fontSize: 18, color: '#2D3282' }} />,
-                  title: 'Testes visíveis',
-                  desc: 'Os alunos poderão ver todos os dados antes de enviar a solução.',
-                },
-                {
-                  value: false,
-                  icon: <VisibilityOffIcon sx={{ fontSize: 18, color: '#D97706' }} />,
-                  title: 'Testes ocultos',
-                  desc: 'Os alunos não verão os dados de teste antes de enviar a solução.',
-                },
-              ].map((opt) => {
-                const selected = config.testesVisiveis === opt.value;
-                return (
-                  <Box
-                    key={String(opt.value)}
-                    onClick={() => onChange({ testesVisiveis: opt.value })}
-                    sx={{
-                      p: 1.75,
-                      border: '1.5px solid',
-                      borderColor: selected ? '#2D3282' : '#E2E8F0',
-                      borderRadius: 2.5,
-                      cursor: 'pointer',
-                      backgroundColor: selected ? '#F0F2F9' : '#fff',
-                      transition: 'all 0.18s',
-                      '&:hover': { borderColor: '#2D3282' },
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      {opt.icon}
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: selected ? '#2D3282' : '#1E293B' }}>
-                        {opt.title}
-                      </Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {opt.desc}
-                    </Typography>
                   </Box>
                 );
               })}
             </Box>
-          </CardContent>
-        </Card>
-
-        {/* Submissões */}
-        <Card sx={{ borderRadius: 3, border: '1.5px solid #EDF2F7' }}>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: '#1E293B' }}>
-              Submissões
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-              Defina como as submissões serão permitidas.
-            </Typography>
-
-            <Box
-              sx={{
-                p: 1.75,
-                border: '1.5px solid',
-                borderColor: config.multiplas ? '#2D3282' : '#E2E8F0',
-                borderRadius: 2.5,
-                backgroundColor: config.multiplas ? '#F0F2F9' : 'transparent',
-                transition: 'all 0.18s',
-              }}
-            >
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.multiplas}
-                    onChange={(e) => onChange({ multiplas: e.target.checked })}
-                    size="small"
-                  />
-                }
-                label={
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
-                      Permitir múltiplas submissões
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      O aluno poderá enviar novas soluções até o prazo final da atividade.
-                    </Typography>
-                  </Box>
-                }
-                sx={{ alignItems: 'flex-start', m: 0 }}
-              />
-            </Box>
-
-            {config.multiplas && (
-              <Alert
-                severity="info"
-                variant="outlined"
-                icon={<CheckCircleIcon fontSize="small" />}
-                sx={{ mt: 1.5, borderRadius: 2, fontSize: '0.78rem' }}
-              >
-                O aluno verá o resultado imediatamente após cada submissão.
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 5 }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            color: '#475569',
-            borderColor: '#CBD5E1',
-            px: 3,
-            fontWeight: 600,
-          }}
-        >
-          Voltar
-        </Button>
-        <Button
-          id="wizard-step4-continuar"
-          variant="contained"
-          onClick={onNext}
-          sx={{
-            borderRadius: 2,
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            px: 4,
-            fontWeight: 600,
-            minWidth: 130,
-          }}
-        >
-          Continuar
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── Step 5: Revisão ─────────────────────────────────────────────────────────
-
-function StepRevisao({ atividadeData, funcoes, config, onBack, onPublish, publishing }) {
-  const pontuacaoTotal = funcoes.reduce((acc, f) => acc + (Number(f.pontos) || 0), 0);
-
-  const validacoes = [
-    { label: 'Informações preenchidas', ok: !!atividadeData.titulo },
-    { label: `${funcoes.length} função(ões) cadastrada(s)`, ok: funcoes.length > 0 },
-    {
-      label: 'Todos os casos de teste cadastrados',
-      ok: true,
-    },
-    {
-      label: `Pontuação total: ${pontuacaoTotal.toFixed(1).replace('.', ',')}/${pontuacaoTotal.toFixed(1).replace('.', ',')}`,
-      ok: pontuacaoTotal > 0,
-    },
-    { label: 'Configurações definidas', ok: true },
-  ];
-
-  const tipoLabel = atividadeData.tipo === 'exercicio' ? 'Exercício de prática' : 'Trabalho avaliativo';
-
-  return (
-    <Box sx={{ maxWidth: 800 }}>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#1E293B' }}>
-        Revisão e publicação
-      </Typography>
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
-        {/* Resumo da atividade */}
-        <Card sx={{ borderRadius: 3, border: '1.5px solid #EDF2F7' }}>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: '#1E293B' }}>
-              Resumo da atividade
-            </Typography>
-            {[
-              { label: 'Título', value: atividadeData.titulo },
-              { label: 'Tipo', value: tipoLabel },
-              {
-                label: 'Período',
-                value: atividadeData.dataFechamento
-                  ? new Date(atividadeData.dataFechamento).toLocaleDateString('pt-BR')
-                  : 'Sem prazo',
-              },
-              { label: 'Pontuação máxima', value: `${pontuacaoTotal.toFixed(1).replace('.', ',')} pontos` },
-              { label: 'Testes visíveis', value: config.testesVisiveis ? 'Sim' : 'Não' },
-              { label: 'Múltiplas submissões', value: config.multiplas ? 'Permitidas' : 'Não' },
-            ].map(({ label, value }) => (
-              <Box key={label} sx={{ mb: 1 }}>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  {label}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: '#0F172A' }}>
-                  {value}
-                </Typography>
-              </Box>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Funções */}
-        <Card sx={{ borderRadius: 3, border: '1.5px solid #EDF2F7' }}>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: '#1E293B' }}>
-              Funções ({funcoes.length})
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {funcoes.map((fn) => (
-                <Box key={fn.uuid}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-                    <Box
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 2,
-                        backgroundColor: '#EEF2FF',
-                        color: '#4F46E5',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <DataObjectIcon sx={{ fontSize: 16 }} />
-                    </Box>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontWeight: 700, fontFamily: 'monospace', color: '#0F172A' }}
-                    >
-                      {fn.nomeFuncao || fn.nome_funcao}
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ pl: 4.5 }}>
-                    {fn.pontos} pts • {(fn.parametros || []).length} parâmetro(s)
-                  </Typography>
-                </Box>
-              ))}
-              {funcoes.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Nenhuma função.
-                </Typography>
-              )}
-            </Box>
-          </CardContent>
-        </Card>
-
-        {/* Validação */}
-        <Card sx={{ borderRadius: 3, border: '1.5px solid #EDF2F7' }}>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: '#1E293B' }}>
-              Validação
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-              {validacoes.map(({ label, ok }) => (
-                <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CheckCircleIcon
-                    sx={{ fontSize: 18, color: ok ? '#10B981' : '#CBD5E1' }}
-                  />
-                  <Typography
-                    variant="caption"
-                    sx={{ color: ok ? '#0F172A' : '#94A3B8', fontWeight: ok ? 600 : 400 }}
-                  >
-                    {label}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 5 }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            color: '#475569',
-            borderColor: '#CBD5E1',
-            px: 3,
-            fontWeight: 600,
-          }}
-        >
-          Voltar
-        </Button>
-        <Button
-          id="wizard-publicar"
-          variant="contained"
-          color="primary"
-          startIcon={
-            publishing ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : (
-              <PublishIcon />
-            )
-          }
-          onClick={onPublish}
-          disabled={publishing || funcoes.length === 0}
-          sx={{
-            minWidth: 180,
-            borderRadius: 2,
-            backgroundColor: '#2D3282',
-            '&:hover': { backgroundColor: '#1E2260' },
-            textTransform: 'none',
-            fontWeight: 600,
-          }}
-        >
-          {publishing ? 'Publicando...' : 'Publicar atividade'}
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── Main Wizard ──────────────────────────────────────────────────────────────
-
-export default function CreateActivityWizard() {
-  const navigate = useNavigate();
-  const { showSuccess, showError } = useSnackbar();
-
-  const [step, setStep] = useState(1);
-  const [creating, setCreating] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-
-  // Dados da atividade criada no backend
-  const [atividadeUuid, setAtividadeUuid] = useState(null);
-  const [funcoes, setFuncoes] = useState([]);
-
-  // Dados do formulário (step 1)
-  const [infoData, setInfoData] = useState({
-    titulo: '',
-    descricao: '',
-    tipo: 'exercicio',
-    dataFechamento: '',
-  });
-
-  // Configurações (step 4)
-  const [config, setConfig] = useState({
-    testesVisiveis: true,
-    multiplas: true,
-  });
-
-  // ── Criar atividade no backend ao avançar do step 1 ────────────────────────
-  const handleStep1Next = async () => {
-    if (atividadeUuid) {
-      setStep(2);
-      return;
-    }
-    setCreating(true);
-    try {
-      const payload = {
-        titulo: infoData.titulo,
-        descricao: infoData.descricao || null,
-        tipo: infoData.tipo,
-        status: 'rascunho',
-        pontuacaoMaxima: 100,
-        bloquearPaste: false,
-      };
-      if (infoData.dataFechamento) {
-        payload.dataFechamento = new Date(infoData.dataFechamento).toISOString();
-      }
-      const data = await createAtividade(payload);
-      setAtividadeUuid(data.uuid);
-      setStep(2);
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao criar atividade');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // ── Recarregar funções ─────────────────────────────────────────────────────
-  const reloadFuncoes = useCallback(async () => {
-    if (!atividadeUuid) return;
-    try {
-      const data = await getFuncoes(atividadeUuid);
-      setFuncoes(Array.isArray(data) ? data : []);
-    } catch {
-      try {
-        const atv = await getAtividade(atividadeUuid);
-        setFuncoes(atv.funcoes || []);
-      } catch {
-        /* silencioso */
-      }
-    }
-  }, [atividadeUuid]);
-
-  // ── Publicar ───────────────────────────────────────────────────────────────
-  const handlePublish = async () => {
-    setPublishing(true);
-    try {
-      await updateAtividade(atividadeUuid, { status: 'publicado' });
-      showSuccess('Atividade publicada com sucesso!');
-      navigate(`/atividades/${atividadeUuid}`);
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao publicar');
-    } finally {
-      setPublishing(false);
-    }
-  };
-
-  const stepTitles = [
-    '04. Criar Atividade — Informações',
-    '04. Criar Atividade — Funções',
-    '04. Criar Atividade — Casos de Teste',
-    '04. Configurações da Atividade',
-    '04. Revisão e Publicação',
-  ];
-
-  return (
-    <Box className="fade-in" sx={{ maxWidth: 840, mx: 'auto', p: { xs: 2, md: 4 } }}>
-      {/* Page header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <Tooltip title="Voltar para Atividades">
-          <IconButton size="small" onClick={() => navigate('/atividades')}>
-            <ArrowBackIcon />
-          </IconButton>
-        </Tooltip>
-        <Typography variant="h5" sx={{ fontWeight: 800, color: '#1E293B', letterSpacing: '-0.02em' }}>
-          {stepTitles[step - 1]}
-        </Typography>
-      </Box>
-
-      <WizardStepper currentStep={step} />
-
-      {/* Step content */}
-      <Box>
-        {step === 1 && (
-          <StepInformacoes
-            data={infoData}
-            onChange={(patch) => setInfoData((p) => ({ ...p, ...patch }))}
-            onNext={handleStep1Next}
-            saving={creating}
-          />
-        )}
-
-        {step === 2 && atividadeUuid && (
-          <StepFuncoes
-            atividadeUuid={atividadeUuid}
-            funcoes={funcoes}
-            onFuncaoAdded={reloadFuncoes}
-            onBack={() => setStep(1)}
-            onNext={() => setStep(3)}
-          />
-        )}
-
-        {step === 3 && (
-          <StepCasosTeste
-            funcoes={funcoes}
-            onBack={() => setStep(2)}
-            onNext={() => setStep(4)}
-          />
-        )}
-
-        {step === 4 && (
-          <StepConfiguracoes
-            config={config}
-            onChange={(patch) => setConfig((p) => ({ ...p, ...patch }))}
-            onBack={() => setStep(3)}
-            onNext={() => setStep(5)}
-          />
-        )}
-
-        {step === 5 && (
-          <StepRevisao
-            atividadeData={infoData}
-            funcoes={funcoes}
-            config={config}
-            onBack={() => setStep(4)}
-            onPublish={handlePublish}
-            publishing={publishing}
-          />
-        )}
-      </Box>
-
-      {/* Loading overlay para criação */}
-      {creating && (
-        <Box
-          sx={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(255,255,255,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
-        >
-          <CircularProgress sx={{ color: '#2D3282' }} />
-        </Box>
-      )}
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, justifyContent: "space-between" }}>
+          <Button
+            component={Link}
+            to="/funcoes"
+            sx={{ textTransform: "none", fontSize: "0.8rem", color: "#64748B" }}
+          >
+            Precisa de outra função? Ir para a biblioteca →
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => setPickerOpen(false)}
+            sx={{
+              borderRadius: 2,
+              backgroundColor: "#1E293B",
+              fontWeight: 600,
+              textTransform: "none",
+              "&:hover": { backgroundColor: "#0F172A" },
+            }}
+          >
+            Concluir
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

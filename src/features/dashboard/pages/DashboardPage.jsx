@@ -219,14 +219,21 @@ export default function DashboardPage() {
           </Typography>
         </Box>
 
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/atividades/criar')}
-          sx={{ flexShrink: 0, alignSelf: 'center' }}
-        >
-          Nova atividade
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1.5, flexShrink: 0, alignSelf: 'center' }}>
+          <Button
+            variant="outlined"
+            onClick={() => navigate('/funcoes')}
+          >
+            Biblioteca de Funções
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/atividades/criar')}
+          >
+            Nova atividade
+          </Button>
+        </Box>
       </Box>
 
       {error && (

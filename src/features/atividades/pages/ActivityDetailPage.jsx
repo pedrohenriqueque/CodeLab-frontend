@@ -1,11 +1,13 @@
 /**
- * ActivityDetailPage — detalhe de uma atividade com lista de funções.
+ * ActivityDetailPage — detalhe de uma atividade com lista de funções e casos de teste contextuais.
  *
- * Layout em duas colunas:
- *   Esquerda: info da atividade
- *   Direita: lista de funções (cards) com casos de teste expandíveis
- *
- * Inclui: Editar Atividade (dialog), ações rápidas de status.
+ * Layout:
+ *   Topo: Breadcrumbs, título, status, ações rápidas de status e botões de gerência.
+ *   Cards: Pontuação máxima, total de funções, status/tipo.
+ *   Lista de Funções associadas:
+ *     - Ordem, Dificuldade contextual, Pontos/Peso.
+ *     - Ações: Configurar parâmetros/visibilidade, Desassociar da atividade, Ver submissões.
+ *     - Detalhe expandido: Tabela de casos de teste contextuais com chips Visível / Oculto.
  */
 
 import { useState } from 'react';
@@ -31,6 +33,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
@@ -43,18 +52,26 @@ import PublishIcon from '@mui/icons-material/Publish';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import TuneIcon from '@mui/icons-material/Tune';
 
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
-import FuncaoForm from '../components/FuncaoForm';
 import ActivityForm from '../components/ActivityForm';
-import CasosTesteTable from '../components/CasosTesteTable';
-import { createFuncao, updateAtividade } from '../api';
+import AssociateFunctionDialog from '../components/AssociateFunctionDialog';
+import { updateAtividade, removerFuncaoAtividade } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 const STATUS_MAP = {
   rascunho: { label: 'Rascunho', color: 'warning' },
   publicado: { label: 'Publicado', color: 'success' },
   fechado: { label: 'Fechado', color: 'default' },
+};
+
+const DIFICULDADE_MAP = {
+  facil: { label: 'Fácil', color: 'success' },
+  medio: { label: 'Médio', color: 'warning' },
+  dificil: { label: 'Difícil', color: 'error' },
 };
 
 // Ações rápidas de status baseadas no status atual
@@ -75,21 +92,15 @@ export default function ActivityDetailPage() {
   const { uuid } = useParams();
   const navigate = useNavigate();
   const { atividade, loading, error, refetch } = useAtividadeDetail(uuid);
-  const [funcaoFormOpen, setFuncaoFormOpen] = useState(false);
+
+  const [associateDialogOpen, setAssociateDialogOpen] = useState(false);
+  const [editingAssociation, setEditingAssociation] = useState(null);
+  const [removeConfirm, setRemoveConfirm] = useState(null); // funcao to remove
   const [editFormOpen, setEditFormOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); // { target, label }
-  const { showSuccess, showError } = useSnackbar();
+  const [removing, setRemoving] = useState(false);
 
-  const handleCreateFuncao = async (data) => {
-    try {
-      await createFuncao(uuid, data);
-      showSuccess('Função criada com sucesso!');
-      refetch();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao criar função');
-      throw err;
-    }
-  };
+  const { showSuccess, showError } = useSnackbar();
 
   const handleEditAtividade = async (data) => {
     try {
@@ -119,6 +130,22 @@ export default function ActivityDetailPage() {
     }
   };
 
+  const handleConfirmRemoveFuncao = async () => {
+    if (!removeConfirm) return;
+    setRemoving(true);
+    try {
+      const fUuid = removeConfirm.funcaoUuid || removeConfirm.uuid;
+      await removerFuncaoAtividade(uuid, fUuid);
+      showSuccess(`Função "${removeConfirm.nomeFuncao}" desassociada da atividade com sucesso!`);
+      setRemoveConfirm(null);
+      refetch();
+    } catch (err) {
+      showError(err.response?.data?.detail || 'Erro ao desassociar função da atividade');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -143,6 +170,8 @@ export default function ActivityDetailPage() {
   if (atividade.tipo === 'prova' && !atividade.notasLiberadas) {
     quickActions.push({ target: 'liberar_notas', label: 'Liberar Notas', icon: <VisibilityIcon />, color: 'primary' });
   }
+
+  const existingFuncaoUuids = (atividade.funcoes || []).map((f) => f.funcaoUuid || f.uuid);
 
   return (
     <Box className="fade-in">
@@ -200,16 +229,19 @@ export default function ActivityDetailPage() {
             variant="outlined"
             startIcon={<EditIcon />}
             size="small"
-            onClick={() => setEditFormOpen(true)}
+            onClick={() => navigate(`/atividades/${uuid}/editar`)}
           >
-            Editar
+            Editar Atividade
           </Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => setFuncaoFormOpen(true)}
+            onClick={() => {
+              setEditingAssociation(null);
+              setAssociateDialogOpen(true);
+            }}
           >
-            Adicionar Função
+            Associar da Biblioteca
           </Button>
         </Box>
       </Box>
@@ -244,72 +276,204 @@ export default function ActivityDetailPage() {
       <Divider sx={{ mb: 3 }} />
 
       {/* Lista de Funções */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <FunctionsIcon color="primary" />
-        <Typography variant="h6">Funções da Atividade</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FunctionsIcon color="primary" />
+          <Typography variant="h6">Funções Associadas à Atividade</Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => navigate('/funcoes')}
+          sx={{ textTransform: 'none' }}
+        >
+          Ir para Biblioteca de Funções →
+        </Button>
       </Box>
 
       {atividade.funcoes?.length === 0 ? (
         <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-          Nenhuma função cadastrada. Clique em "Adicionar Função" para começar.
+          Nenhuma função associada a esta atividade. Clique em "Associar da Biblioteca" para vincular funções.
         </Alert>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {atividade.funcoes?.map((funcao) => (
-            <Accordion
-              key={funcao.uuid}
-              disableGutters
-              sx={{
-                borderRadius: '12px !important',
-                border: '1px solid',
-                borderColor: 'divider',
-                '&:before': { display: 'none' },
-                overflow: 'hidden',
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 2 }}>
-                  <CodeIcon color="primary" fontSize="small" />
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body1" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                      {funcao.nomeFuncao}()
-                    </Typography>
-                    {funcao.descricao && (
-                      <Typography variant="caption" color="text.secondary">
-                        {funcao.descricao}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Chip label={`${funcao.pontos} pts`} size="small" color="primary" variant="outlined" />
-                  <Tooltip title="Ver submissões">
-                    <IconButton
+          {atividade.funcoes?.map((funcao, index) => {
+            const difConfig = DIFICULDADE_MAP[funcao.dificuldade || funcao.dificuldadePadrao] || DIFICULDADE_MAP.facil;
+            const targetFuncUuid = funcao.funcaoUuid || funcao.uuid;
+
+            return (
+              <Accordion
+                key={funcao.uuid || targetFuncUuid}
+                disableGutters
+                sx={{
+                  borderRadius: '12px !important',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  '&:before': { display: 'none' },
+                  overflow: 'hidden',
+                }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 1 }}>
+                    <Chip
+                      label={`#${funcao.ordem !== undefined ? funcao.ordem : index}`}
                       size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/atividades/${uuid}/funcao/${funcao.uuid}/submissoes`);
-                      }}
-                    >
-                      <ListAltIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails sx={{ backgroundColor: '#FAFBFC', pt: 2 }}>
-                <CasosTesteTable
-                  funcaoUuid={funcao.uuid}
-                  parametros={funcao.parametros || []}
-                />
-              </AccordionDetails>
-            </Accordion>
-          ))}
+                      variant="outlined"
+                      sx={{ fontWeight: 600 }}
+                    />
+                    <CodeIcon color="primary" fontSize="small" />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                        {funcao.nomeFuncao}()
+                      </Typography>
+                      {funcao.descricao && (
+                        <Typography variant="caption" color="text.secondary">
+                          {funcao.descricao}
+                        </Typography>
+                      )}
+                    </Box>
+
+                    {/* Dificuldade Contextual */}
+                    <Chip
+                      label={difConfig.label}
+                      size="small"
+                      color={difConfig.color}
+                      variant="outlined"
+                    />
+
+                    {/* Pontos / Peso */}
+                    <Chip
+                      label={`${funcao.peso ?? 10} pts`}
+                      size="small"
+                      color="primary"
+                      variant="filled"
+                    />
+
+                    {/* Ações na função */}
+                    <Tooltip title="Configurar peso, ordem e visibilidade">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingAssociation(funcao);
+                          setAssociateDialogOpen(true);
+                        }}
+                      >
+                        <TuneIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+
+                    <Tooltip title="Ver submissões">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/atividades/${uuid}/funcao/${targetFuncUuid}/submissoes`);
+                        }}
+                      >
+                        <ListAltIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+
+                    <Tooltip title="Desassociar da atividade">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRemoveConfirm(funcao);
+                        }}
+                      >
+                        <DeleteOutlineOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </AccordionSummary>
+
+                <AccordionDetails sx={{ backgroundColor: '#FAFBFC', pt: 2 }}>
+                  <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      Casos de Teste Selecionados para esta Atividade ({funcao.casosTeste?.length || 0})
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Gerencie visibilidade via botão de configuração acima.
+                    </Typography>
+                  </Box>
+
+                  {(!funcao.casosTeste || funcao.casosTeste.length === 0) ? (
+                    <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
+                      Nenhum caso de teste configurado para esta função nesta atividade.
+                    </Alert>
+                  ) : (
+                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                      <Table size="small">
+                        <TableHead sx={{ backgroundColor: 'action.hover' }}>
+                          <TableRow>
+                            <TableCell sx={{ width: 60 }}>#</TableCell>
+                            <TableCell>Visibilidade</TableCell>
+                            <TableCell>Inputs</TableCell>
+                            <TableCell>Saída Esperada</TableCell>
+                            <TableCell>Descrição</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {funcao.casosTeste.map((ct) => (
+                            <TableRow key={ct.uuid || ct.casoTesteUuid}>
+                              <TableCell sx={{ fontWeight: 600 }}>#{ct.numero}</TableCell>
+                              <TableCell>
+                                {ct.oculto ? (
+                                  <Chip
+                                    label="Oculto"
+                                    size="small"
+                                    color="default"
+                                    icon={<VisibilityOffIcon fontSize="small" />}
+                                    variant="outlined"
+                                  />
+                                ) : (
+                                  <Chip
+                                    label="Visível"
+                                    size="small"
+                                    color="success"
+                                    icon={<VisibilityIcon fontSize="small" />}
+                                    variant="outlined"
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                {typeof ct.inputs === 'object' ? JSON.stringify(ct.inputs) : String(ct.inputs || '-')}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                {typeof ct.outputEsperado === 'object'
+                                  ? JSON.stringify(ct.outputEsperado)
+                                  : String(ct.outputEsperado || '-')}
+                              </TableCell>
+                              <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
+                                {ct.descricao || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
         </Box>
       )}
 
-      {/* Dialog nova função */}
-      <FuncaoForm
-        open={funcaoFormOpen}
-        onClose={() => setFuncaoFormOpen(false)}
-        onSave={handleCreateFuncao}
+      {/* Dialog Associar / Configurar Função */}
+      <AssociateFunctionDialog
+        open={associateDialogOpen}
+        onClose={() => {
+          setAssociateDialogOpen(false);
+          setEditingAssociation(null);
+        }}
+        atividadeUuid={uuid}
+        existingFuncaoUuids={existingFuncaoUuids}
+        editingAssociation={editingAssociation}
+        onSaved={refetch}
       />
 
       {/* Dialog editar atividade */}
@@ -319,6 +483,39 @@ export default function ActivityDetailPage() {
         onSave={handleEditAtividade}
         initialData={atividade}
       />
+
+      {/* Dialog de confirmação de remoção da função */}
+      <Dialog
+        open={!!removeConfirm}
+        onClose={() => setRemoveConfirm(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: 'error.main' }}>
+          Desassociar Função
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Tem certeza que deseja desassociar a função <strong>{removeConfirm?.nomeFuncao}</strong> desta atividade?
+          </Typography>
+          <Alert severity="info" variant="outlined" sx={{ mt: 2, borderRadius: 2 }}>
+            A função <strong>continuará disponível na Biblioteca de Funções</strong> e poderá ser reutilizada em outras atividades. Ela apenas deixará de fazer parte desta atividade.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRemoveConfirm(null)} disabled={removing}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmRemoveFuncao}
+            disabled={removing}
+          >
+            {removing ? 'Removendo...' : 'Desassociar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Dialog de confirmação de ação de status */}
       <Dialog

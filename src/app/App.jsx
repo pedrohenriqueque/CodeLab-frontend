@@ -21,22 +21,35 @@ import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
+import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
 import AlunosPage from '../features/dashboard/pages/AlunosPage';
 import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
 import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
 
 // Aluno
+import StudentDashboardPage from '../features/dashboard/pages/StudentDashboardPage';
 import SandboxPage from '../features/sandbox/pages/SandboxPage';
 import StudentActivityListPage from '../features/atividades/pages/StudentActivityListPage';
 import StudentActivityDetailPage from '../features/atividades/pages/StudentActivityDetailPage';
 import CodeSubmissionPage from '../features/submissoes/pages/CodeSubmissionPage';
+import StudentSubmissionsPage from '../features/submissoes/pages/StudentSubmissionsPage';
+import StudentSubmissionDetailPage from '../features/submissoes/pages/StudentSubmissionDetailPage';
+import StudentHistoryPage from '../features/atividades/pages/StudentHistoryPage';
 
 function HomeRedirect() {
   const { user, isProfessor } = useAuth();
   if (!user) return <LandingPage />;
   if (isProfessor) return <Navigate to="/dashboard" replace />;
-  return <Navigate to="/aluno/atividades" replace />;
+  return <Navigate to="/aluno/dashboard" replace />;
+}
+
+function SubmissoesDispatcher() {
+  const { isProfessor } = useAuth();
+  if (isProfessor) {
+    return <SubmissionListPage />;
+  }
+  return <Navigate to="/aluno/submissoes" replace />;
 }
 
 function AppRoutes() {
@@ -84,6 +97,15 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* Funções - restrito a professor */}
+        <Route
+          path="funcoes"
+          element={
+            <ProtectedRoute allowedRoles={['professor']}>
+              <FunctionLibraryPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="atividades/:uuid"
           element={
@@ -103,8 +125,9 @@ function AppRoutes() {
         <Route
           path="submissoes"
           element={
-            <ProtectedRoute allowedRoles={['professor']}>
-              <SubmissionListPage />
+            <ProtectedRoute>
+              {/* Se aluno tentar acessar /submissoes diretamente, vai para /aluno/submissoes */}
+              <SubmissoesDispatcher />
             </ProtectedRoute>
           }
         />
@@ -134,6 +157,14 @@ function AppRoutes() {
         />
 
         {/* ===== ALUNO ===== */}
+        <Route
+          path="aluno/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['aluno']}>
+              <StudentDashboardPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="aluno/sandbox"
           element={
@@ -167,10 +198,34 @@ function AppRoutes() {
           }
         />
         <Route
+          path="aluno/submissoes"
+          element={
+            <ProtectedRoute allowedRoles={['aluno']}>
+              <StudentSubmissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="aluno/historico"
+          element={
+            <ProtectedRoute allowedRoles={['aluno']}>
+              <StudentHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="aluno/submissoes/:uuid"
+          element={
+            <ProtectedRoute allowedRoles={['aluno']}>
+              <StudentSubmissionDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="aluno/atividades/:uuid/funcao/:funcaoUuid/submissoes"
           element={
             <ProtectedRoute allowedRoles={['aluno']}>
-              <SubmissionListPage />
+              <StudentSubmissionsPage />
             </ProtectedRoute>
           }
         />

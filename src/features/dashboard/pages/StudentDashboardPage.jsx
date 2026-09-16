@@ -20,7 +20,7 @@ import {
   Button,
 } from '@mui/material';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -302,7 +302,7 @@ export default function StudentDashboardPage() {
                       >
                         {urgent
                           ? <RadioButtonUncheckedIcon sx={{ fontSize: 14, color, mt: 0.3, flexShrink: 0 }} />
-                          : <CheckCircleOutlineIcon sx={{ fontSize: 14, color, mt: 0.3, flexShrink: 0 }} />
+                          : <CheckCircleOutlineRoundedIcon sx={{ fontSize: 14, color, mt: 0.3, flexShrink: 0 }} />
                         }
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -454,7 +454,7 @@ export default function StudentDashboardPage() {
               <Button
                 size="small"
                 endIcon={<ArrowForwardIcon />}
-                onClick={() => navigate('/aluno/atividades')}
+                onClick={() => navigate('/aluno/historico')}
                 sx={{ fontSize: '0.8rem', fontWeight: 600 }}
               >
                 Ver histórico completo

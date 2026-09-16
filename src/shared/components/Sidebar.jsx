@@ -36,6 +36,8 @@ import PeopleOutlineRoundedIcon from '@mui/icons-material/PeopleOutlineRounded';
 import BarChartRoundedIcon from '@mui/icons-material/BarChartRounded';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import TerminalOutlinedIcon from '@mui/icons-material/TerminalOutlined';
+import FunctionsOutlinedIcon from '@mui/icons-material/FunctionsOutlined';
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
 import KeyboardDoubleArrowLeftRoundedIcon from '@mui/icons-material/KeyboardDoubleArrowLeftRounded';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -49,6 +51,7 @@ export const DRAWER_WIDTH = 250;
 export const MENU_PROFESSOR = [
   { label: 'Início', icon: <HomeOutlinedIcon />, path: '/dashboard' },
   { label: 'Atividades', icon: <AssignmentOutlinedIcon />, path: '/atividades' },
+  { label: 'Biblioteca', icon: <FunctionsOutlinedIcon />, path: '/funcoes' },
   { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/submissoes' },
   { label: 'Alunos', icon: <PeopleOutlineRoundedIcon />, path: '/alunos' },
   { label: 'Resultados', icon: <BarChartRoundedIcon />, path: '/resultados' },
@@ -58,7 +61,8 @@ export const MENU_PROFESSOR = [
 export const MENU_ALUNO = [
   { label: 'Início', icon: <HomeOutlinedIcon />, path: '/aluno/dashboard' },
   { label: 'Atividades', icon: <AssignmentOutlinedIcon />, path: '/aluno/atividades' },
-  { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/submissoes' },
+  { label: 'Histórico', icon: <HistoryOutlinedIcon />, path: '/aluno/historico' },
+  { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/aluno/submissoes' },
   { label: 'Playground', icon: <TerminalOutlinedIcon />, path: '/aluno/sandbox' },
   { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];

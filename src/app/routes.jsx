@@ -16,6 +16,8 @@ import LoginPage from '../features/auth/pages/LoginPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
+import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
+
 
 // Professor — Submissões
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
@@ -26,11 +28,13 @@ import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
 // Professor — Dashboard
 import DashboardPage from '../features/dashboard/pages/DashboardPage';
 
-// Aluno
 import StudentDashboardPage from '../features/dashboard/pages/StudentDashboardPage';
 import StudentActivityListPage from '../features/atividades/pages/StudentActivityListPage';
 import StudentActivityDetailPage from '../features/atividades/pages/StudentActivityDetailPage';
 import CodeSubmissionPage from '../features/submissoes/pages/CodeSubmissionPage';
+import StudentSubmissionsPage from '../features/submissoes/pages/StudentSubmissionsPage';
+import StudentSubmissionDetailPage from '../features/submissoes/pages/StudentSubmissionDetailPage';
+import StudentHistoryPage from '../features/atividades/pages/StudentHistoryPage';
 import SandboxPage from '../features/sandbox/pages/SandboxPage';
 
 // Redirect baseado no role do usuário (lê do localStorage para funcionar fora do context)
@@ -86,10 +90,26 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'atividades/:uuid/editar',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <CreateActivityWizard />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'atividades',
         element: (
           <ProtectedRoute allowedRoles={['professor']}>
             <ActivityListPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'funcoes',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <FunctionLibraryPage />
           </ProtectedRoute>
         ),
       },
@@ -175,10 +195,34 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'aluno/submissoes',
+        element: (
+          <ProtectedRoute allowedRoles={['aluno']}>
+            <StudentSubmissionsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'aluno/historico',
+        element: (
+          <ProtectedRoute allowedRoles={['aluno']}>
+            <StudentHistoryPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'aluno/submissoes/:uuid',
+        element: (
+          <ProtectedRoute allowedRoles={['aluno']}>
+            <StudentSubmissionDetailPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'aluno/atividades/:uuid/funcao/:funcaoUuid/submissoes',
         element: (
           <ProtectedRoute allowedRoles={['aluno']}>
-            <SubmissionListPage />
+            <StudentSubmissionsPage />
           </ProtectedRoute>
         ),
       },
