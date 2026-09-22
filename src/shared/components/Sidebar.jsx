@@ -45,6 +45,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 
 import { useAuth } from '../../features/auth/hooks/useAuthProvider';
 import { useThemeMode } from '../theme/ThemeContext';
+import TurmaSelector from '../../features/turmas/components/TurmaSelector';
 
 export const DRAWER_WIDTH = 250;
 
@@ -64,6 +65,11 @@ export const MENU_ALUNO = [
   { label: 'Histórico', icon: <HistoryOutlinedIcon />, path: '/aluno/historico' },
   { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/aluno/submissoes' },
   { label: 'Playground', icon: <TerminalOutlinedIcon />, path: '/aluno/sandbox' },
+  { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
+];
+
+export const MENU_ADMIN = [
+  { label: 'Professores', icon: <PeopleOutlineRoundedIcon />, path: '/admin/professores' },
   { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];
 
@@ -87,7 +93,8 @@ export default function Sidebar({ open, onClose }) {
 
   const [anchorEl, setAnchorEl] = useState(null);
 
-  const menuItems = isProfessor ? MENU_PROFESSOR : MENU_ALUNO;
+  const isAdmin = user?.perfil === 'ADMIN';
+  const menuItems = isAdmin ? MENU_ADMIN : (isProfessor ? MENU_PROFESSOR : MENU_ALUNO);
 
   const handleMenuOpen = (e) => setAnchorEl(e.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -118,7 +125,7 @@ export default function Sidebar({ open, onClose }) {
   };
 
   const displayName = user?.nome || (isProfessor ? 'Prof. Pedro Henrique' : 'Aluno CodeGrade');
-  const displayRole = user?.tipo === 'professor' ? 'Professor' : (user?.tipo === 'aluno' ? 'Aluno' : 'Professor');
+  const displayRole = user?.perfil === 'PROFESSOR' ? 'Professor' : (user?.perfil === 'ALUNO' ? 'Aluno' : 'Administrador');
   const initials = getInitials(displayName);
 
   const drawerContent = (
@@ -145,7 +152,7 @@ export default function Sidebar({ open, onClose }) {
       >
         <Box
           onClick={() => {
-            navigate(isProfessor ? '/dashboard' : '/aluno/dashboard');
+            navigate(isAdmin ? '/admin/professores' : (isProfessor ? '/dashboard' : '/aluno/dashboard'));
             if (isMobile) onClose?.();
           }}
           sx={{
@@ -198,6 +205,9 @@ export default function Sidebar({ open, onClose }) {
           </IconButton>
         </Tooltip>
       </Box>
+
+      {/* Seletor de Turma Ativa (Camada Prévia) */}
+      {!isAdmin && <TurmaSelector />}
 
       {/* Navigation List */}
       <List

@@ -4,8 +4,8 @@
 
 import httpClient from '../../shared/api/httpClient';
 
-export async function getBibliotecaFuncoes(params = {}) {
-  const { data } = await httpClient.get('/api/funcoes', { params });
+export async function getBibliotecaFuncoes() {
+  const { data } = await httpClient.get('/api/funcoes');
   return data;
 }
 
@@ -20,7 +20,7 @@ export async function createFuncao(body) {
 }
 
 export async function updateFuncao(uuid, body) {
-  const { data } = await httpClient.put(`/api/funcoes/${uuid}`, body);
+  const { data } = await httpClient.patch(`/api/funcoes/${uuid}`, body);
   return data;
 }
 
@@ -28,21 +28,26 @@ export async function deleteFuncao(uuid) {
   await httpClient.delete(`/api/funcoes/${uuid}`);
 }
 
+export async function duplicarFuncao(uuid) {
+  const { data } = await httpClient.post(`/api/funcoes/${uuid}/duplicar`);
+  return data;
+}
+
 export async function getCasosTeste(funcaoUuid) {
-  const { data } = await httpClient.get(`/api/funcoes/${funcaoUuid}/casos-teste`);
+  const { data } = await httpClient.get(`/api/funcoes/${funcaoUuid}/casos`);
   return data;
 }
 
 export async function createCasosTeste(funcaoUuid, body) {
-  const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos-teste`, body);
+  const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos`, body);
   return data;
 }
 
-export async function updateCasoTeste(funcaoUuid, casoUuid, body) {
-  const { data } = await httpClient.put(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`, body);
+export async function updateCasoTeste(casoUuid, body) {
+  const { data } = await httpClient.patch(`/api/casos/${casoUuid}`, body);
   return data;
 }
 
-export async function deleteCasoTeste(funcaoUuid, casoUuid) {
-  await httpClient.delete(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`);
+export async function deleteCasoTeste(casoUuid) {
+  await httpClient.delete(`/api/casos/${casoUuid}`);
 }

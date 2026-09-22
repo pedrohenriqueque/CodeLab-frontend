@@ -27,11 +27,15 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
 import SaveIcon from '@mui/icons-material/Save';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 
 import {
   getCasosTeste,
@@ -40,6 +44,7 @@ import {
   deleteCasoTeste,
 } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import { useAuth } from '../../auth/hooks/useAuthProvider';
 
 export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdated }) {
   const [casos, setCasos] = useState([]);
@@ -49,12 +54,15 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
   const [formInputs, setFormInputs] = useState({});
   const [formOutput, setFormOutput] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
+  const [formOculto, setFormOculto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const { showSuccess, showError } = useSnackbar();
+  const { user } = useAuth();
 
   const parametros = funcao?.parametros || [];
+  const isAutor = Boolean(user?.uuid && user.uuid === funcao?.professorUuid);
 
   const fetchCasos = useCallback(async () => {
     if (!funcao?.uuid) return;
@@ -86,6 +94,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
     setFormInputs(initInputs);
     setFormOutput('');
     setFormDescricao('');
+    setFormOculto(false);
     setEditingCaso(null);
     setFormOpen(true);
   };
@@ -93,14 +102,14 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
   const handleOpenEdit = (caso) => {
     const initInputs = {};
     parametros.forEach((p) => {
-      initInputs[p.nome] = caso.inputs?.[p.nome] ?? '';
+      initInputs[p.nome] = typeof caso.entradas?.[parametros.indexOf(p)] === 'object'
+        ? JSON.stringify(caso.entradas[parametros.indexOf(p)]) : (caso.entradas?.[parametros.indexOf(p)] ?? '');
     });
     setFormInputs(initInputs);
-    const outVal = typeof caso.outputEsperado === 'object' && caso.outputEsperado !== null
-      ? (caso.outputEsperado?.valor ?? JSON.stringify(caso.outputEsperado))
-      : String(caso.outputEsperado ?? '');
+    const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
     setFormOutput(outVal);
     setFormDescricao(caso.descricao || '');
+    setFormOculto(caso.visibilidade === 'OCULTO');
     setEditingCaso(caso);
     setFormOpen(true);
   };
@@ -122,7 +131,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
         }
       });
 
-      const retTipo = funcao?.retorno?.tipo || funcao?.retorno || 'int';
+      const retTipo = funcao?.tipoRetorno || 'int';
       let parsedOut = formOutput;
       if (retTipo === 'int' || retTipo === 'long') {
         const n = parseInt(formOutput, 10);
@@ -133,13 +142,13 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
       }
 
       const body = {
-        inputs: parsedInputs,
-        outputEsperado: { valor: parsedOut },
-        descricao: formDescricao.trim() || null,
+        entradas: parametros.map((p) => parsedInputs[p.nome]),
+        retornoEsperado: parsedOut,
+        visibilidade: formOculto ? 'OCULTO' : 'VISIVEL',
       };
 
       if (editingCaso?.uuid) {
-        await updateCasoTeste(funcao.uuid, editingCaso.uuid, body);
+        await updateCasoTeste(editingCaso.uuid, body);
         showSuccess('Caso de teste atualizado com sucesso!');
       } else {
         await createCasosTeste(funcao.uuid, body);
@@ -159,7 +168,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
   const handleDeleteCaso = async (casoUuid) => {
     setDeletingId(casoUuid);
     try {
-      await deleteCasoTeste(funcao.uuid, casoUuid);
+      await deleteCasoTeste(casoUuid);
       showSuccess('Caso de teste removido!');
       await fetchCasos();
       if (onUpdated) onUpdated();
@@ -173,14 +182,14 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-        Casos de Teste — <code>{funcao?.nomeFuncao || funcao?.nome_funcao}()</code>
+        Casos de Teste — <code>{funcao?.nome}()</code>
       </DialogTitle>
       <DialogContent dividers sx={{ borderColor: '#E2E8F0' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Casos de teste canônicos cadastrados na biblioteca para esta função.
           </Typography>
-          <Button
+          {isAutor && <Button
             variant="contained"
             size="small"
             startIcon={<AddIcon />}
@@ -188,8 +197,9 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
             sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
           >
             Adicionar Caso
-          </Button>
+          </Button>}
         </Box>
+        {!isAutor && <Alert severity="info" variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>Você pode consultar estes casos porque a função é compartilhada. Duplique-a para criar ou alterar casos.</Alert>}
 
         {/* Formulário inline para novo/edição */}
         {formOpen && (
@@ -239,6 +249,30 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                 />
               </Box>
 
+              {/* Visibilidade do caso */}
+              <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formOculto}
+                      onChange={(e) => setFormOculto(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                        Caso de Teste Oculto
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        (os alunos não verão as entradas nem a saída esperada nos resultados de submissão)
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ m: 0 }}
+                />
+              </Box>
+
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
                 <Button size="small" onClick={() => setFormOpen(false)} disabled={saving} sx={{ textTransform: 'none' }}>
                   Cancelar
@@ -265,7 +299,9 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
           </Box>
         ) : casos.length === 0 ? (
           <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-            Esta função ainda não possui casos de teste canônicos cadastrados. Clique em "Adicionar Caso" acima.
+            {isAutor
+              ? 'Esta função ainda não possui casos de teste canônicos cadastrados. Clique em "Adicionar Caso" acima.'
+              : 'Esta função compartilhada ainda não possui casos de teste. Duplique-a para criar casos na sua cópia.'}
           </Alert>
         ) : (
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2.5 }}>
@@ -275,6 +311,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                   <TableCell sx={{ fontWeight: 700, width: 60 }}>#</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Entradas</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Saída Esperada</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 115 }}>Visibilidade</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Descrição</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, width: 100 }}>Ações</TableCell>
                 </TableRow>
@@ -282,12 +319,10 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
               <TableBody>
                 {casos.map((caso, idx) => {
                   const inputStr = parametros.length
-                    ? parametros.map((p) => `${p.nome} = ${caso.inputs?.[p.nome] ?? ''}`).join(', ')
-                    : JSON.stringify(caso.inputs ?? {});
+                    ? parametros.map((p, inputIndex) => `${p.nome} = ${JSON.stringify(caso.entradas?.[inputIndex])}`).join(', ')
+                    : JSON.stringify(caso.entradas ?? []);
 
-                  const outVal = typeof caso.outputEsperado === 'object' && caso.outputEsperado !== null
-                    ? (caso.outputEsperado?.valor ?? JSON.stringify(caso.outputEsperado))
-                    : String(caso.outputEsperado ?? '');
+                  const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
 
                   return (
                     <TableRow key={caso.uuid || idx} hover>
@@ -300,10 +335,37 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 700, color: '#16A34A' }}>
                         {outVal}
                       </TableCell>
+                      <TableCell>
+                        {caso.oculto ? (
+                          <Chip
+                            icon={<VisibilityOffOutlinedIcon sx={{ fontSize: '14px !important' }} />}
+                            label="Oculto"
+                            size="small"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.75rem',
+                              backgroundColor: '#F1F5F9',
+                              color: '#64748B',
+                              borderColor: '#CBD5E1',
+                            }}
+                            variant="outlined"
+                          />
+                        ) : (
+                          <Chip
+                            icon={<VisibilityOutlinedIcon sx={{ fontSize: '14px !important' }} />}
+                            label="Visível"
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                            sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+                          />
+                        )}
+                      </TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
                         {caso.descricao || '—'}
                       </TableCell>
                       <TableCell align="right">
+                        {isAutor && <>
                         <Tooltip title="Editar Caso">
                           <IconButton size="small" onClick={() => handleOpenEdit(caso)}>
                             <EditOutlinedIcon fontSize="small" />
@@ -319,6 +381,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                             <DeleteOutlineOutlinedIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                        </>}
                       </TableCell>
                     </TableRow>
                   );

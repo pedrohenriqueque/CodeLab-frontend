@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -23,21 +23,21 @@ import {
   TextField,
   InputAdornment,
   Skeleton,
-  Alert,
-  Tooltip,
-  IconButton,
 } from '@mui/material';
 
 // Icons
 import SearchIcon from '@mui/icons-material/Search';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { getSubmissoes } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 const STATUS_CONFIG = {
+  AVALIADA: { label: 'Avaliada', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+  ERRO_COMPILACAO: { label: 'Erro de compilação', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  ENVIO_REGISTRADO: { label: 'Envio registrado', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' },
+  FALHA_TECNICA: { label: 'Falha técnica', color: '#B45309', bg: '#FFFBEB', border: '#FDE68A' },
   pendente: { label: 'Pendente', color: '#64748B', bg: '#F1F5F9', border: '#CBD5E1' },
   compilando: { label: 'Compilando', color: '#0284C7', bg: '#E0F2FE', border: '#BAE6FD' },
   executando: { label: 'Executando', color: '#0284C7', bg: '#E0F2FE', border: '#BAE6FD' },
@@ -57,7 +57,6 @@ function formatDateTime(isoString) {
 }
 
 export default function StudentSubmissionsPage() {
-  const navigate = useNavigate();
   const { showError } = useSnackbar();
 
   const [submissoes, setSubmissoes] = useState([]);

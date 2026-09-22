@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getAtividade } from '../api';
+import { getAtividade, getFuncoesAtividade } from '../api';
 
 export default function useAtividadeDetail(uuid) {
   const [atividade, setAtividade] = useState(null);
@@ -15,8 +15,8 @@ export default function useAtividadeDetail(uuid) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAtividade(uuid);
-      setAtividade(data);
+      const [data, funcoes] = await Promise.all([getAtividade(uuid), getFuncoesAtividade(uuid)]);
+      setAtividade({ ...data, funcoes });
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Erro ao carregar atividade');
     } finally {

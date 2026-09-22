@@ -5,7 +5,7 @@
  *   Topo: Breadcrumbs, título, status, ações rápidas de status e botões de gerência.
  *   Cards: Pontuação máxima, total de funções, status/tipo.
  *   Lista de Funções associadas:
- *     - Ordem, Dificuldade contextual, Pontos/Peso.
+ *     - Ordem, Dificuldade contextual, Nota máxima.
  *     - Ações: Configurar parâmetros/visibilidade, Desassociar da atividade, Ver submissões.
  *     - Detalhe expandido: Tabela de casos de teste contextuais com chips Visível / Oculto.
  */
@@ -50,22 +50,22 @@ import FunctionsIcon from '@mui/icons-material/Functions';
 import EditIcon from '@mui/icons-material/Edit';
 import PublishIcon from '@mui/icons-material/Publish';
 import LockIcon from '@mui/icons-material/Lock';
-import LockOpenIcon from '@mui/icons-material/LockOpen';
+
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
-import TuneIcon from '@mui/icons-material/Tune';
+
 
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
-import ActivityForm from '../components/ActivityForm';
+
 import AssociateFunctionDialog from '../components/AssociateFunctionDialog';
-import { updateAtividade, removerFuncaoAtividade } from '../api';
+import { publicarAtividade, encerrarAtividade, removerFuncaoAtividade } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 const STATUS_MAP = {
-  rascunho: { label: 'Rascunho', color: 'warning' },
-  publicado: { label: 'Publicado', color: 'success' },
-  fechado: { label: 'Fechado', color: 'default' },
+  RASCUNHO: { label: 'Rascunho', color: 'warning' },
+  PUBLICADA: { label: 'Publicado', color: 'success' },
+  ENCERRADA: { label: 'Encerrada', color: 'default' },
 };
 
 const DIFICULDADE_MAP = {
@@ -76,16 +76,8 @@ const DIFICULDADE_MAP = {
 
 // Ações rápidas de status baseadas no status atual
 const STATUS_ACTIONS = {
-  rascunho: [
-    { target: 'publicado', label: 'Publicar', icon: <PublishIcon />, color: 'success' },
-    { target: 'fechado', label: 'Fechar', icon: <LockIcon />, color: 'default' },
-  ],
-  publicado: [
-    { target: 'fechado', label: 'Fechar', icon: <LockIcon />, color: 'default' },
-  ],
-  fechado: [
-    { target: 'publicado', label: 'Reabrir', icon: <LockOpenIcon />, color: 'success' },
-  ],
+  RASCUNHO: [{ target: 'PUBLICADA', label: 'Publicar', icon: <PublishIcon />, color: 'success' }],
+  PUBLICADA: [{ target: 'ENCERRADA', label: 'Encerrar', icon: <LockIcon />, color: 'warning' }],
 };
 
 export default function ActivityDetailPage() {
@@ -96,37 +88,24 @@ export default function ActivityDetailPage() {
   const [associateDialogOpen, setAssociateDialogOpen] = useState(false);
   const [editingAssociation, setEditingAssociation] = useState(null);
   const [removeConfirm, setRemoveConfirm] = useState(null); // funcao to remove
-  const [editFormOpen, setEditFormOpen] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); // { target, label }
   const [removing, setRemoving] = useState(false);
 
   const { showSuccess, showError } = useSnackbar();
 
-  const handleEditAtividade = async (data) => {
-    try {
-      await updateAtividade(uuid, data);
-      showSuccess('Atividade atualizada com sucesso!');
-      refetch();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao atualizar atividade');
-      throw err;
-    }
-  };
-
   const handleStatusChange = async (targetStatus) => {
+    setChangingStatus(true);
     try {
-      if (targetStatus === 'liberar_notas') {
-        await updateAtividade(uuid, { notasLiberadas: true });
-        showSuccess('Notas liberadas para os alunos!');
-      } else {
-        await updateAtividade(uuid, { status: targetStatus });
-        showSuccess(`Status alterado para "${targetStatus}"!`);
-      }
+      if (targetStatus === 'PUBLICADA') await publicarAtividade(uuid);
+      else await encerrarAtividade(uuid);
+      showSuccess(targetStatus === 'PUBLICADA' ? 'Atividade publicada.' : 'Atividade encerrada.');
       setConfirmAction(null);
-      refetch();
+      await refetch();
     } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao alterar status/notas');
-      setConfirmAction(null);
+      showError(err.response?.data?.erro || 'Não foi possível alterar a atividade.');
+    } finally {
+      setChangingStatus(false);
     }
   };
 
@@ -140,7 +119,7 @@ export default function ActivityDetailPage() {
       setRemoveConfirm(null);
       refetch();
     } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao desassociar função da atividade');
+      showError(err.response?.data?.erro || 'Erro ao desassociar função da atividade');
     } finally {
       setRemoving(false);
     }
@@ -164,12 +143,10 @@ export default function ActivityDetailPage() {
     return <Alert severity="warning">Atividade não encontrada.</Alert>;
   }
 
-  const status = STATUS_MAP[atividade.status] || STATUS_MAP.rascunho;
+  const status = STATUS_MAP[atividade.status] || STATUS_MAP.RASCUNHO;
   const quickActions = STATUS_ACTIONS[atividade.status] ? [...STATUS_ACTIONS[atividade.status]] : [];
 
-  if (atividade.tipo === 'prova' && !atividade.notasLiberadas) {
-    quickActions.push({ target: 'liberar_notas', label: 'Liberar Notas', icon: <VisibilityIcon />, color: 'primary' });
-  }
+  const canEdit = atividade.status === 'RASCUNHO';
 
   const existingFuncaoUuids = (atividade.funcoes || []).map((f) => f.funcaoUuid || f.uuid);
 
@@ -227,6 +204,7 @@ export default function ActivityDetailPage() {
           ))}
           <Button
             variant="outlined"
+            disabled={!canEdit}
             startIcon={<EditIcon />}
             size="small"
             onClick={() => navigate(`/atividades/${uuid}/editar`)}
@@ -235,6 +213,7 @@ export default function ActivityDetailPage() {
           </Button>
           <Button
             variant="contained"
+            disabled={!canEdit}
             startIcon={<AddIcon />}
             onClick={() => {
               setEditingAssociation(null);
@@ -251,7 +230,7 @@ export default function ActivityDetailPage() {
         <Card>
           <CardContent sx={{ py: 2 }}>
             <Typography variant="caption" color="text.secondary">Pontuação Máxima</Typography>
-            <Typography variant="h6">{atividade.pontuacaoMaxima} pts</Typography>
+            <Typography variant="h6">{(atividade.funcoes || []).reduce((sum, f) => sum + Number(f.notaMaxima || 0), 0)} pts</Typography>
           </CardContent>
         </Card>
         <Card>
@@ -266,7 +245,7 @@ export default function ActivityDetailPage() {
             <Typography variant="h6">
               {status.label}
               <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                ({atividade.tipo === 'prova' ? 'Prova' : 'Exercício'})
+                ({atividade.tipo === 'PROVA' ? 'Prova' : 'Exercício'})
               </Typography>
             </Typography>
           </CardContent>
@@ -298,7 +277,7 @@ export default function ActivityDetailPage() {
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {atividade.funcoes?.map((funcao, index) => {
-            const difConfig = DIFICULDADE_MAP[funcao.dificuldade || funcao.dificuldadePadrao] || DIFICULDADE_MAP.facil;
+            const difConfig = DIFICULDADE_MAP[String(funcao.dificuldade || funcao.dificuldadePadrao).toLowerCase()] || DIFICULDADE_MAP.facil;
             const targetFuncUuid = funcao.funcaoUuid || funcao.uuid;
 
             return (
@@ -341,27 +320,13 @@ export default function ActivityDetailPage() {
                       variant="outlined"
                     />
 
-                    {/* Pontos / Peso */}
+                    {/* Nota máxima */}
                     <Chip
-                      label={`${funcao.peso ?? 10} pts`}
+                      label={`${funcao.notaMaxima ?? funcao.peso ?? 10} pts`}
                       size="small"
                       color="primary"
                       variant="filled"
                     />
-
-                    {/* Ações na função */}
-                    <Tooltip title="Configurar peso, ordem e visibilidade">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingAssociation(funcao);
-                          setAssociateDialogOpen(true);
-                        }}
-                      >
-                        <TuneIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
 
                     <Tooltip title="Ver submissões">
                       <IconButton
@@ -393,10 +358,10 @@ export default function ActivityDetailPage() {
                 <AccordionDetails sx={{ backgroundColor: '#FAFBFC', pt: 2 }}>
                   <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      Casos de Teste Selecionados para esta Atividade ({funcao.casosTeste?.length || 0})
+                      Casos de Teste Copiados para esta Atividade ({funcao.casosTeste?.length || 0})
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Gerencie visibilidade via botão de configuração acima.
+                      Todos os casos da função foram copiados para o snapshot da atividade.
                     </Typography>
                   </Box>
 
@@ -476,14 +441,6 @@ export default function ActivityDetailPage() {
         onSaved={refetch}
       />
 
-      {/* Dialog editar atividade */}
-      <ActivityForm
-        open={editFormOpen}
-        onClose={() => setEditFormOpen(false)}
-        onSave={handleEditAtividade}
-        initialData={atividade}
-      />
-
       {/* Dialog de confirmação de remoção da função */}
       <Dialog
         open={!!removeConfirm}
@@ -520,7 +477,7 @@ export default function ActivityDetailPage() {
       {/* Dialog de confirmação de ação de status */}
       <Dialog
         open={!!confirmAction}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => !changingStatus && setConfirmAction(null)}
         maxWidth="xs"
         fullWidth
       >
@@ -529,28 +486,25 @@ export default function ActivityDetailPage() {
           <Typography>
             Tem certeza que deseja <strong>{confirmAction?.label?.toLowerCase()}</strong> esta atividade?
           </Typography>
-          {confirmAction?.target === 'publicado' && (
+          {confirmAction?.target === 'PUBLICADA' && (
             <Alert severity="info" variant="outlined" sx={{ mt: 2, borderRadius: 2 }}>
               Ao publicar, a atividade ficará visível para os alunos. Se a data de abertura não estiver definida, será
               preenchida automaticamente.
             </Alert>
           )}
-          {confirmAction?.target === 'fechado' && (
+          {confirmAction?.target === 'ENCERRADA' && (
             <Alert severity="warning" variant="outlined" sx={{ mt: 2, borderRadius: 2 }}>
               Ao fechar, os alunos não poderão mais enviar submissões.
             </Alert>
           )}
-          {confirmAction?.target === 'liberar_notas' && (
-            <Alert severity="info" variant="outlined" sx={{ mt: 2, borderRadius: 2 }}>
-              Ao liberar as notas desta prova, os alunos poderão visualizar a nota final e o feedback dos testes.
-            </Alert>
-          )}
+
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setConfirmAction(null)}>Cancelar</Button>
+          <Button disabled={changingStatus} onClick={() => setConfirmAction(null)}>Cancelar</Button>
           <Button
             variant="contained"
             color={confirmAction?.color || 'primary'}
+            disabled={changingStatus}
             onClick={() => handleStatusChange(confirmAction.target)}
           >
             {confirmAction?.label}

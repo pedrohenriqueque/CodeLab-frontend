@@ -4,7 +4,7 @@
  * Exibe atividades como linhas de lista com score, status, busca e filtro.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,15 +19,13 @@ import {
   Skeleton,
   Alert,
   Divider,
-  Tooltip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
 
 import useAtividades from '../../atividades/hooks/useAtividades';
-import useProgresso from '../../atividades/hooks/useProgresso';
-import { useAuth } from '../../auth/hooks/useAuthProvider';
+import { getProgressoAtividade } from '../api';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -39,7 +37,6 @@ function formatDate(iso) {
 }
 
 function deriveStudentStatus(atv, funcoes, progresso) {
-  if (atv.statusEntrega === 'entregue') return 'entregue';
   const total = funcoes?.length ?? 0;
   if (total === 0) return 'nao_iniciado';
 
@@ -52,7 +49,7 @@ function deriveStudentStatus(atv, funcoes, progresso) {
     const peso = f.peso ?? f.pontos ?? 10;
     if (prog && prog.tentativasUsadas > 0) {
       enviadas++;
-      if (prog.melhorNota >= peso) completas++;
+      if (atv.tipo?.toUpperCase() !== 'PROVA' && prog.melhorNota >= peso) completas++;
     }
   }
 
@@ -62,7 +59,6 @@ function deriveStudentStatus(atv, funcoes, progresso) {
 }
 
 const STATUS_MAP = {
-  entregue:     { label: 'Entregue',     bgcolor: '#dcfce7', color: '#15803d' },
   concluido:    { label: 'Concluído',    bgcolor: '#dcfce7', color: '#15803d' },
   em_andamento: { label: 'Em andamento', bgcolor: '#dbeafe', color: '#1d4ed8' },
   nao_iniciado: { label: 'Não iniciado', bgcolor: '#f3f4f6', color: '#6b7280' },
@@ -71,31 +67,37 @@ const STATUS_MAP = {
 const FILTER_OPTIONS = [
   { value: 'todas',        label: 'Todas as atividades' },
   { value: 'em_andamento', label: 'Em andamento' },
-  { value: 'entregue',     label: 'Entregues' },
   { value: 'nao_iniciado', label: 'Não iniciadas' },
 ];
 
 // ─── Activity Row ────────────────────────────────────────────────────────────
 
 function ActivityRow({ atv, progresso, onNavigate, isLast }) {
+  const isProva = atv.tipo?.toUpperCase() === 'PROVA';
   const total = atv.funcoes?.length ?? 0;
   const totalPontos = atv.funcoes?.reduce((s, f) => s + (f.peso ?? f.pontos ?? 10), 0) ?? 0;
 
   let pontosObtidos = 0;
   let funcoesConcluidas = 0;
+  let funcoesEnviadas = 0;
   for (const f of (atv.funcoes || [])) {
     const fUuid = f.funcaoUuid || f.uuid;
     const prog = progresso.find((p) => p.funcaoUuid === fUuid);
     const peso = f.peso ?? f.pontos ?? 10;
     if (prog && prog.tentativasUsadas > 0) {
-      pontosObtidos += prog.melhorNota;
-      if (prog.melhorNota >= peso) funcoesConcluidas++;
+      funcoesEnviadas++;
+      if (!isProva) {
+        pontosObtidos += prog.melhorNota;
+        if (prog.melhorNota >= peso) funcoesConcluidas++;
+      }
     }
   }
 
   const studentStatus = deriveStudentStatus(atv, atv.funcoes, progresso);
   const statusCfg = STATUS_MAP[studentStatus] || STATUS_MAP.nao_iniciado;
-  const progressoPct = total > 0 ? (funcoesConcluidas / total) * 100 : 0;
+  const progressoPct = total > 0
+    ? ((isProva ? funcoesEnviadas : funcoesConcluidas) / total) * 100
+    : 0;
 
   return (
     <>
@@ -162,10 +164,12 @@ function ActivityRow({ atv, progresso, onNavigate, isLast }) {
         {/* Score + status */}
         <Box sx={{ textAlign: 'right', flexShrink: 0, minWidth: 120 }}>
           <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '1rem', color: 'text.primary', mb: 0.5 }}>
-            {pontosObtidos.toFixed(1)}{' '}
-            <Typography component="span" sx={{ fontWeight: 400, color: 'text.secondary', fontSize: '0.875rem' }}>
-              / {totalPontos.toFixed(1)}
-            </Typography>
+            {isProva ? `${funcoesEnviadas} de ${total} enviadas` : <>
+              {pontosObtidos.toFixed(1)}{' '}
+              <Typography component="span" sx={{ fontWeight: 400, color: 'text.secondary', fontSize: '0.875rem' }}>
+                / {totalPontos.toFixed(1)}
+              </Typography>
+            </>}
           </Typography>
           <Chip
             label={statusCfg.label}
@@ -191,12 +195,31 @@ function ActivityRow({ atv, progresso, onNavigate, isLast }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function StudentActivityListPage() {
-  const { user } = useAuth();
   const { atividades, loading, error } = useAtividades();
-  const { progresso } = useProgresso(user?.uuid);
+  const [progresso, setProgresso] = useState([]);
   const [filter, setFilter] = useState('todas');
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let active = true;
+    async function loadProgress() {
+      const resultados = await Promise.all(atividades.map(async (atividade) => {
+        try {
+          const funcoes = await getProgressoAtividade(atividade.uuid);
+          return funcoes.map((funcao) => ({
+            ...funcao,
+            funcaoUuid: funcao.funcaoAtividadeUuid,
+            tentativasUsadas: funcao.enviada ? 1 : 0,
+            melhorNota: funcao.melhorNota == null ? 0 : Number(funcao.melhorNota),
+          }));
+        } catch { return []; }
+      }));
+      if (active) setProgresso(resultados.flat());
+    }
+    loadProgress();
+    return () => { active = false; };
+  }, [atividades]);
 
   const filtered = useMemo(() => {
     let result = atividades.filter((a) => a.status !== 'rascunho');

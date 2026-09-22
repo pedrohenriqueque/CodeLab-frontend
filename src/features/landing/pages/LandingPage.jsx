@@ -26,7 +26,7 @@ export default function LandingPage() {
 
   const handleAccess = () => {
     if (user) {
-      navigate(isProfessor ? '/dashboard' : '/aluno/atividades');
+      navigate(isProfessor ? '/turmas' : '/turmas');
     } else {
       navigate('/login');
     }
@@ -34,7 +34,7 @@ export default function LandingPage() {
 
   const handleRegisterOrLogin = () => {
     if (user) {
-      navigate(isProfessor ? '/dashboard' : '/aluno/atividades');
+      navigate(isProfessor ? '/turmas' : '/turmas');
     } else {
       navigate('/login?tab=register');
     }

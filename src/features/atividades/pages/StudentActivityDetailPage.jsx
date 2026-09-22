@@ -2,10 +2,9 @@
  * StudentActivityDetailPage — detalhe de atividade para o aluno.
  *
  * Exibe metadados da atividade, progresso consolidado, lista de funções com status
- * detalhado por função e ação de Entrega Final da Atividade (RN14).
+ * detalhado por função.
  */
 
-import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -18,26 +17,16 @@ import {
   Skeleton,
   Alert,
   Divider,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from '@mui/material';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
-import SendIcon from '@mui/icons-material/Send';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
-import useProgresso from '../hooks/useProgresso';
-import { entregarAtividade } from '../api';
-import { useAuth } from '../../auth/hooks/useAuthProvider';
-import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import useActivityProgress from '../hooks/useActivityProgress';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -48,9 +37,10 @@ function formatDate(iso) {
   });
 }
 
-function deriveFuncaoStatus(prog, funcao) {
+function deriveFuncaoStatus(prog, funcao, isProva) {
   const pontosMax = funcao.peso ?? funcao.pontos ?? 10;
   if (!prog || prog.tentativasUsadas === 0) return 'nao_iniciada';
+  if (isProva) return 'enviada';
   const nota = prog.melhorNota ?? 0;
   if (nota >= pontosMax) return 'concluida';
   return 'em_andamento';
@@ -65,16 +55,19 @@ function StatusIcon({ status }) {
   if (status === 'em_andamento') {
     return <WarningAmberIcon sx={{ fontSize: 22, color: '#f59e0b' }} />;
   }
+  if (status === 'enviada') {
+    return <TaskAltIcon sx={{ fontSize: 22, color: '#2563eb' }} />;
+  }
   return <RadioButtonUncheckedIcon sx={{ fontSize: 22, color: '#d1d5db' }} />;
 }
 
 // ─── Function Row ────────────────────────────────────────────────────────────
 
-function FuncaoRow({ funcao, prog, uuid, isLast, navigate }) {
+function FuncaoRow({ funcao, prog, uuid, isLast, navigate, isProva }) {
   const targetFuncUuid = funcao.funcaoUuid || funcao.uuid;
   const tentativas = prog?.tentativasUsadas ?? 0;
   const melhorNota = prog?.melhorNota ?? 0;
-  const status = deriveFuncaoStatus(prog, funcao);
+  const status = deriveFuncaoStatus(prog, funcao, isProva);
   const pontosMax = funcao.peso ?? funcao.pontos ?? 10;
   const numCasos = funcao.casosTeste?.length ?? 0;
 
@@ -85,6 +78,7 @@ function FuncaoRow({ funcao, prog, uuid, isLast, navigate }) {
       bgcolor: '#fef3c7',
       color: '#b45309',
     },
+    enviada: { label: 'Enviada', bgcolor: '#dbeafe', color: '#1d4ed8' },
     nao_iniciada: { label: 'Não iniciada', bgcolor: '#f3f4f6', color: '#6b7280' },
   }[status];
 
@@ -159,7 +153,7 @@ function FuncaoRow({ funcao, prog, uuid, isLast, navigate }) {
 
         {/* Score + chip */}
         <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-          {tentativas > 0 && (
+          {!isProva && tentativas > 0 && (
             <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 0.5 }}>
               {melhorNota.toFixed(1)}{' '}
               <Typography component="span" sx={{ fontWeight: 400, color: 'text.secondary', fontSize: '0.8rem' }}>
@@ -193,14 +187,9 @@ function FuncaoRow({ funcao, prog, uuid, isLast, navigate }) {
 export default function StudentActivityDetailPage() {
   const { uuid } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { showSuccess, showError } = useSnackbar();
 
-  const { atividade, loading, error, refetch } = useAtividadeDetail(uuid);
-  const { progresso, refetch: refetchProgresso } = useProgresso(user?.uuid);
-
-  const [entregarDialogOpen, setEntregarDialogOpen] = useState(false);
-  const [entregando, setEntregando] = useState(false);
+  const { atividade, loading, error } = useAtividadeDetail(uuid);
+  const { progresso } = useActivityProgress(uuid);
 
   if (loading) {
     return (
@@ -218,10 +207,9 @@ export default function StudentActivityDetailPage() {
   if (!atividade) return <Alert severity="warning">Atividade não encontrada.</Alert>;
 
   const isFechada =
-    atividade.status === 'fechado' ||
+    atividade.status === 'ENCERRADA' ||
     (atividade.dataFechamento && new Date(atividade.dataFechamento) < new Date());
-
-  const isEntregue = atividade.statusEntrega === 'entregue';
+  const isProva = atividade.tipo?.toUpperCase() === 'PROVA';
 
   const funcoes = atividade.funcoes ?? [];
   const totalPontos = funcoes.reduce((s, f) => s + (f.peso ?? f.pontos ?? 10), 0);
@@ -232,9 +220,9 @@ export default function StudentActivityDetailPage() {
     const targetFuncUuid = f.funcaoUuid || f.uuid;
     const prog = progresso.find((p) => p.funcaoUuid === targetFuncUuid);
     const pesoFunc = f.peso ?? f.pontos ?? 10;
-    if (prog && prog.tentativasUsadas > 0) {
-      pontosObtidos += prog.melhorNota;
-      if (prog.melhorNota >= pesoFunc) funcoesConcluidas++;
+    if (!isProva && prog && prog.tentativasUsadas > 0) {
+      pontosObtidos += prog.melhorNota ?? 0;
+      if ((prog.melhorNota ?? 0) >= pesoFunc) funcoesConcluidas++;
     }
   }
 
@@ -242,20 +230,7 @@ export default function StudentActivityDetailPage() {
     ? Math.round((funcoesConcluidas / funcoes.length) * 100)
     : 0;
 
-  const handleConfirmarEntrega = async () => {
-    setEntregando(true);
-    try {
-      const resp = await entregarAtividade(uuid);
-      showSuccess(`Atividade entregue com sucesso! Nota consolidada: ${resp.notaFinal ?? pontosObtidos} pts`);
-      setEntregarDialogOpen(false);
-      refetch();
-      refetchProgresso();
-    } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao realizar a entrega da atividade.');
-    } finally {
-      setEntregando(false);
-    }
-  };
+  const funcoesEnviadas = progresso.filter((funcao) => funcao.tentativasUsadas > 0).length;
 
   return (
     <Box className="fade-in">
@@ -274,22 +249,14 @@ export default function StudentActivityDetailPage() {
         </Typography>
       </Breadcrumbs>
 
-      {/* Header com Título e Botão de Entrega */}
+      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2.5, gap: 2, flexWrap: 'wrap' }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
             <Typography variant="h5" sx={{ fontWeight: 700 }}>
               {atividade.titulo}
             </Typography>
-            {isEntregue ? (
-              <Chip
-                icon={<TaskAltIcon fontSize="small" />}
-                label="Entregue"
-                color="success"
-                size="small"
-                variant="outlined"
-              />
-            ) : isFechada ? (
+            {isFechada ? (
               <Chip label="Encerrada" size="small" variant="outlined" />
             ) : (
               <Chip label="Em andamento" color="primary" size="small" variant="outlined" />
@@ -302,30 +269,10 @@ export default function StudentActivityDetailPage() {
           )}
         </Box>
 
-        {/* Botão de Entrega no Topo */}
-        {!isEntregue && !isFechada && (
-          <Button
-            id="btn-entregar-atividade"
-            variant="contained"
-            color="success"
-            startIcon={<SendIcon />}
-            onClick={() => setEntregarDialogOpen(true)}
-            sx={{ fontWeight: 600, px: 2.5 }}
-          >
-            Entregar Atividade
-          </Button>
-        )}
       </Box>
 
-      {/* Alerta de Atividade Entregue */}
-      {isEntregue && (
-        <Alert severity="success" icon={<TaskAltIcon />} sx={{ mb: 3, borderRadius: 2 }}>
-          Você já realizou a <strong>entrega final</strong> desta atividade. Suas submissões foram consolidadas e novas tentativas estão desabilitadas.
-        </Alert>
-      )}
-
       {/* Alerta de Atividade Encerrada por Prazo */}
-      {isFechada && !isEntregue && (
+      {isFechada && (
         <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
           Esta atividade está encerrada pelo prazo. O envio de novas submissões está desabilitado, mas você ainda pode visualizar suas soluções.
         </Alert>
@@ -370,16 +317,13 @@ export default function StudentActivityDetailPage() {
 
             <Divider orientation="vertical" flexItem />
 
-            {/* Progresso / Nota */}
+            {/* Progresso */}
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.4, fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {isEntregue ? 'Nota Consolidada' : 'Seu progresso'}
+                {isProva ? 'Funções enviadas' : 'Seu progresso'}
               </Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.9rem', color: isEntregue ? 'success.main' : 'text.primary' }}>
-                {pontosObtidos.toFixed(1)} / {totalPontos.toFixed(1)}{' '}
-                <Typography component="span" color="text.secondary" sx={{ fontWeight: 400, fontSize: '0.8rem' }}>
-                  ({progressoPct}%)
-                </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                {isProva ? `${funcoesEnviadas} de ${funcoes.length}` : `${pontosObtidos.toFixed(1)} / ${totalPontos.toFixed(1)} (${progressoPct}%)`}
               </Typography>
             </Box>
           </Box>
@@ -413,100 +357,13 @@ export default function StudentActivityDetailPage() {
                 uuid={uuid}
                 isLast={idx === funcoes.length - 1}
                 navigate={navigate}
+                isProva={isProva}
               />
             );
           })}
         </Card>
       )}
 
-      {/* Bottom delivery banner */}
-      {!isEntregue && !isFechada && funcoes.length > 0 && (
-        <Box
-          sx={{
-            mt: 3,
-            p: 2.5,
-            borderRadius: 2,
-            backgroundColor: (theme) =>
-              theme.palette.mode === 'light' ? '#f8fafc' : 'rgba(255,255,255,0.03)',
-            border: '1px solid',
-            borderColor: 'divider',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 2,
-          }}
-        >
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-            <InfoOutlinedIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Pronto para encerrar?
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Após concluir as funções desejadas, realize a entrega final para consolidar suas notas.
-              </Typography>
-            </Box>
-          </Box>
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<SendIcon />}
-            onClick={() => setEntregarDialogOpen(true)}
-            sx={{ fontWeight: 600 }}
-          >
-            Entregar Atividade
-          </Button>
-        </Box>
-      )}
-
-      {/* Modal de Confirmação de Entrega Final (RN14) */}
-      <Dialog
-        open={entregarDialogOpen}
-        onClose={() => !entregando && setEntregarDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-          Entregar atividade?
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Após a entrega, você <strong>não poderá realizar novas submissões</strong> nesta atividade.
-          </Typography>
-
-          <Box sx={{ p: 2, borderRadius: 2, backgroundColor: 'action.hover', mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2" color="text.secondary">Funções concluídas:</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{funcoesConcluidas} de {funcoes.length}</Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">Nota consolidada prevista:</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.main' }}>
-                {pontosObtidos.toFixed(1)} / {totalPontos.toFixed(1)} pts
-              </Typography>
-            </Box>
-          </Box>
-
-          <Typography variant="caption" color="text.secondary">
-            Suas melhores notas em cada função serão consolidadas como a nota final da atividade.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setEntregarDialogOpen(false)} disabled={entregando}>
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={handleConfirmarEntrega}
-            disabled={entregando}
-            startIcon={<SendIcon />}
-          >
-            {entregando ? 'Entregando...' : 'Entregar atividade'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

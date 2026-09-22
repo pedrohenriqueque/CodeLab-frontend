@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -28,7 +28,7 @@ export default function SandboxPage() {
       const res = await sandboxApi.executarCodigo(codigo);
       setResultado(res);
     } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao executar o código.');
+      showError(err.response?.data?.erro || err.response?.data?.detail || 'Erro ao executar o código.');
     } finally {
       setSubmitting(false);
     }

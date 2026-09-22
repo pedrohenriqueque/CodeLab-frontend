@@ -22,11 +22,19 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 export default function SubmissionResultCard({ resultado, feedbackProfessor }) {
   if (!resultado) return null;
 
+  if (resultado.falhaTecnica) {
+    return (
+      <Alert severity="warning" variant="outlined">
+        A avaliação não pôde ser concluída por uma falha técnica. Sua tentativa foi registrada.
+      </Alert>
+    );
+  }
+
   const {
     nota = 0,
-    pontosMaximo,
-    totalCasos = 0,
-    casosPassados = 0,
+    pontosMaximo = resultado.notaMaxima ?? 0,
+    totalCasos = resultado.totalCasos ?? 0,
+    casosPassados = resultado.casosAprovados ?? 0,
     casos = [],
     erroCompilacao,
     erroExecucao,

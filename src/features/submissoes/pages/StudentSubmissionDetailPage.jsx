@@ -17,7 +17,6 @@ import {
   Typography,
   Breadcrumbs,
   Card,
-  CardContent,
   Chip,
   Button,
   Skeleton,
@@ -32,13 +31,16 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import CodeIcon from '@mui/icons-material/Code';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 
 import { getSubmissao } from '../api';
 import SubmissionResultCard from '../components/SubmissionResultCard';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
 const STATUS_CONFIG = {
+  AVALIADA: { label: 'Avaliada', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+  ERRO_COMPILACAO: { label: 'Erro de compilação', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  ENVIO_REGISTRADO: { label: 'Envio registrado', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' },
+  FALHA_TECNICA: { label: 'Falha técnica', color: '#B45309', bg: '#FFFBEB', border: '#FDE68A' },
   pendente: { label: 'Pendente', color: '#64748B', bg: '#F1F5F9', border: '#CBD5E1' },
   compilando: { label: 'Compilando', color: '#0284C7', bg: '#E0F2FE', border: '#BAE6FD' },
   executando: { label: 'Executando', color: '#0284C7', bg: '#E0F2FE', border: '#BAE6FD' },
@@ -116,7 +118,6 @@ export default function StudentSubmissionDetailPage() {
 
   const st = STATUS_CONFIG[submissao.status] || STATUS_CONFIG.pendente;
   const funcName = submissao.funcaoNome || 'funcao';
-  const pontosTotal = submissao.pontosTotal ?? 10;
   const submitUrl = submissao.atividadeUuid
     ? `/aluno/atividades/${submissao.atividadeUuid}/funcao/${submissao.funcaoUuid}/submeter`
     : null;

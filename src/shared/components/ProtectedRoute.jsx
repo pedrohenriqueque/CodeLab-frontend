@@ -21,9 +21,9 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.tipo)) {
-    const fallbackPath = user.tipo === 'professor' ? '/dashboard' : '/aluno/dashboard';
-    return <Navigate to={fallbackPath} replace />;
+  const role = user?.perfil?.toLowerCase();
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to="/turmas" replace />;
   }
 
   return children;

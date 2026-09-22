@@ -1,324 +1,87 @@
-/**
- * SubmissionListPage — lista de submissões de uma função (professor).
- *
- * Rota: /atividades/:uuid/funcao/:funcaoUuid/submissoes
- *
- * Inclui nome do aluno na tabela e exibição do código submetido no dialog.
- */
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Alert, Avatar, Box, Button, Card, Chip, FormControl, InputAdornment, MenuItem, Pagination, Select, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
+import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import { getSubmissoes } from '../api';
+import { getAtividadesResumo } from '../../atividades/api';
+import { useTurmaContext } from '../../turmas/context/TurmaContext';
+import { FILTERABLE_STATUSES, formatScore, formatSubmissionDate, statusInfo } from '../components/submissionDisplay';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Breadcrumbs,
-  Link,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  IconButton,
-  Tooltip,
-  Skeleton,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Divider,
-  TextField,
-  CircularProgress,
-} from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-
-import { getSubmissoes, getSubmissao, updateSubmissaoFeedback } from '../api';
-import SubmissionResultCard from '../components/SubmissionResultCard';
-
-const STATUS_CHIP = {
-  pendente: { label: 'Pendente', color: 'default' },
-  compilando: { label: 'Compilando', color: 'info' },
-  executando: { label: 'Executando', color: 'info' },
-  avaliado: { label: 'Avaliado', color: 'success' },
-  erro: { label: 'Erro', color: 'error' },
-};
-
-function formatDate(isoString) {
-  if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
+const PAGE_SIZE = 8;
+const initials = (name) => name?.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
 
 export default function SubmissionListPage() {
   const { uuid: atividadeUuid, funcaoUuid } = useParams();
+  const { turmaAtiva } = useTurmaContext();
   const navigate = useNavigate();
-  const [submissoes, setSubmissoes] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [classActivities, setClassActivities] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedDetail, setSelectedDetail] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const [savingFeedback, setSavingFeedback] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getSubmissoes(funcaoUuid, null, atividadeUuid);
-      setSubmissoes(data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Erro ao carregar submissões');
-    } finally {
-      setLoading(false);
-    }
-  }, [funcaoUuid, atividadeUuid]);
+  const [error, setError] = useState('');
+  const [activity, setActivity] = useState(atividadeUuid || 'all');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(1);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    let active = true;
+    if (!turmaAtiva?.uuid) return undefined;
+    Promise.all([getSubmissoes(), getAtividadesResumo(turmaAtiva.uuid)]).then(([items, activities]) => {
+      if (active) { setSubmissions(items); setClassActivities(activities); setError(''); setLoading(false); }
+    }).catch((err) => {
+      if (active) { setError(err.response?.data?.erro || 'Não foi possível carregar as submissões.'); setLoading(false); }
+    });
+    return () => { active = false; };
+  }, [reload, turmaAtiva?.uuid]);
 
-  const handleViewDetail = async (submissaoUuid) => {
-    try {
-      const detail = await getSubmissao(submissaoUuid);
-      setSelectedDetail(detail);
-      setFeedback(detail.feedbackProfessor || '');
-      setDetailOpen(true);
-    } catch {
-      // fallback: mostrar o que já temos
-      const sub = submissoes.find((s) => s.uuid === submissaoUuid);
-      if (sub) {
-        setSelectedDetail(sub);
-        setFeedback(sub.feedbackProfessor || '');
-        setDetailOpen(true);
-      }
-    }
-  };
+  const turmaSubmissions = useMemo(() => {
+    const activityIds = new Set(classActivities.map((item) => item.uuid));
+    return submissions.filter((item) => activityIds.has(item.atividadeUuid) && (!funcaoUuid || item.funcaoUuid === funcaoUuid));
+  }, [submissions, classActivities, funcaoUuid]);
+  const activities = useMemo(() => classActivities.map((item) => [item.uuid, item.titulo]), [classActivities]);
+  const filtered = useMemo(() => turmaSubmissions.filter((item) => {
+    const matchesActivity = activity === 'all' || item.atividadeUuid === activity;
+    const matchesStatus = status === 'all' || item.status === status;
+    const text = `${item.alunoNome || ''} ${item.alunoMatricula || ''} ${item.atividadeTitulo || ''} ${item.funcaoNome || ''}`.toLocaleLowerCase('pt-BR');
+    return matchesActivity && matchesStatus && text.includes(query.trim().toLocaleLowerCase('pt-BR'));
+  }).sort((a, b) => new Date(b.dataSubmissao) - new Date(a.dataSubmissao)), [turmaSubmissions, activity, status, query]);
+  const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const setFilter = (setter) => (value) => { setter(value); setPage(1); };
 
-  const handleSaveFeedback = async () => {
-    if (!selectedDetail) return;
-    setSavingFeedback(true);
-    try {
-      const updated = await updateSubmissaoFeedback(selectedDetail.uuid, feedback);
-      setSelectedDetail(updated);
-      setSubmissoes(prev => prev.map(s => s.uuid === updated.uuid ? updated : s));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSavingFeedback(false);
-    }
-  };
-
-  return (
-    <Box className="fade-in">
-      {/* Breadcrumb */}
-      <Breadcrumbs sx={{ mb: 2 }}>
-        <Link
-          underline="hover"
-          color="inherit"
-          sx={{ cursor: 'pointer', fontSize: '0.875rem' }}
-          onClick={() => navigate('/atividades')}
-        >
-          Atividades
-        </Link>
-        <Link
-          underline="hover"
-          color="inherit"
-          sx={{ cursor: 'pointer', fontSize: '0.875rem' }}
-          onClick={() => navigate(`/atividades/${atividadeUuid}`)}
-        >
-          Detalhes
-        </Link>
-        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
-          Submissões
-        </Typography>
-      </Breadcrumbs>
-
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <Tooltip title="Voltar">
-          <IconButton onClick={() => navigate(`/atividades/${atividadeUuid}`)}>
-            <ArrowBackIcon />
-          </IconButton>
-        </Tooltip>
-        <Typography variant="h5">Submissões</Typography>
-        <Chip label={`${submissoes.length} total`} size="small" variant="outlined" />
-      </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      {loading ? (
-        <Box>
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} variant="rounded" height={56} sx={{ mb: 1, borderRadius: 2 }} />
-          ))}
-        </Box>
-      ) : submissoes.length === 0 ? (
-        <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-          Nenhuma submissão encontrada para esta função.
-        </Alert>
-      ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3 }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Aluno</TableCell>
-                <TableCell>Data</TableCell>
-                <TableCell>Tentativa</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Nota</TableCell>
-                <TableCell align="right">Ações</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {submissoes.map((sub) => {
-                const status = STATUS_CHIP[sub.status] || STATUS_CHIP.pendente;
-                return (
-                  <TableRow key={sub.uuid} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {sub.alunoNome || '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{formatDate(sub.dataSubmissao)}</TableCell>
-                    <TableCell>
-                      <Chip label={`#${sub.tentativaNumero}`} size="small" variant="outlined" />
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={status.label} color={status.color} size="small" variant="outlined" />
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          color: sub.nota != null && sub.nota > 0 ? 'success.main' : 'text.secondary',
-                        }}
-                      >
-                        {sub.nota != null ? sub.nota : '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Ver detalhes">
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => handleViewDetail(sub.uuid)}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-
-      {/* Detail Dialog */}
-      <Dialog
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: 600 }}>
-          Detalhes da Submissão
-          {selectedDetail?.alunoNome && (
-            <Typography variant="body2" color="text.secondary">
-              Aluno: {selectedDetail.alunoNome}
-            </Typography>
-          )}
-        </DialogTitle>
-        <DialogContent dividers>
-          {/* Resultado da avaliação */}
-          {selectedDetail?.resultadoJson ? (
-            <SubmissionResultCard
-              resultado={selectedDetail.resultadoJson}
-              feedbackProfessor={selectedDetail.feedbackProfessor}
-            />
-          ) : (
-            <Typography color="text.secondary">Sem resultados disponíveis.</Typography>
-          )}
-
-          {/* Código submetido */}
-          {selectedDetail?.codigoSubmetido && (
-            <>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                Código Submetido
-              </Typography>
-              <Box
-                component="pre"
-                sx={{
-                  backgroundColor: '#1e1e2e',
-                  color: '#cdd6f4',
-                  p: 2,
-                  borderRadius: 2,
-                  overflow: 'auto',
-                  maxHeight: 400,
-                  fontSize: '0.8rem',
-                  lineHeight: 1.6,
-                  fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", monospace',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  '&::-webkit-scrollbar': {
-                    width: 6,
-                    height: 6,
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    borderRadius: 3,
-                  },
-                }}
-              >
-                <code>{selectedDetail.codigoSubmetido}</code>
-              </Box>
-            </>
-          )}
-
-          {/* Feedback Section */}
-          <Divider sx={{ my: 3 }} />
-          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            Feedback do Professor
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            placeholder="Escreva um feedback para o aluno..."
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleSaveFeedback}
-              disabled={savingFeedback}
-              startIcon={savingFeedback && <CircularProgress size={16} />}
-            >
-              Salvar Feedback
-            </Button>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailOpen(false)}>Fechar</Button>
-        </DialogActions>
-      </Dialog>
+  return <Stack spacing={2.5}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <AssignmentOutlinedIcon color="primary" sx={{ fontSize: 34 }} />
+      <Box><Typography component="h1" variant="h4">Submissões</Typography><Typography color="text.secondary">Consulte os códigos enviados e os resultados das correções da turma.</Typography></Box>
     </Box>
-  );
+
+    <Card variant="outlined" sx={{ p: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(160px, 1fr) minmax(200px, 1.15fr) minmax(0, 2.4fr)' }, gap: 2, alignItems: 'end' }}>
+        <Box><Typography component="label" htmlFor="activity-filter" variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 700 }}>Atividade</Typography>
+          <FormControl fullWidth size="small"><Select id="activity-filter" value={activity} onChange={(event) => setFilter(setActivity)(event.target.value)}><MenuItem value="all">Todas as atividades</MenuItem>{activities.map(([id, title]) => <MenuItem key={id} value={id}>{title}</MenuItem>)}</Select></FormControl></Box>
+        <Box><Typography component="label" htmlFor="submission-search" variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 700 }}>Buscar</Typography>
+          <TextField id="submission-search" fullWidth size="small" value={query} onChange={(event) => setFilter(setQuery)(event.target.value)} placeholder="Aluno, matrícula ou atividade" slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchOutlinedIcon fontSize="small" /></InputAdornment> } }} /></Box>
+        <Box><Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 700 }}>Situação</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>{[['all', 'Todas'], ...FILTERABLE_STATUSES.map((key) => [key, statusInfo(key).label])].map(([key, label]) => <Chip key={key} clickable onClick={() => setFilter(setStatus)(key)} label={label} color={status === key ? 'primary' : 'default'} variant={status === key ? 'filled' : 'outlined'} />)}</Box></Box>
+      </Box>
+    </Card>
+
+    {error && <Alert severity="error" action={<Button onClick={() => { setLoading(true); setReload((n) => n + 1); }}>Tentar novamente</Button>}>{error}</Alert>}
+    {loading ? <Stack spacing={1}>{[0, 1, 2, 3].map((n) => <Skeleton key={n} variant="rounded" height={62} />)}</Stack> : !error && <Card variant="outlined" sx={{ overflow: 'hidden' }}>
+      <TableContainer><Table sx={{ minWidth: 780 }}><TableHead><TableRow><TableCell>Aluno</TableCell><TableCell>Atividade / Função</TableCell><TableCell>Situação</TableCell><TableCell>Nota</TableCell><TableCell>Enviada em</TableCell><TableCell align="right">Ação</TableCell></TableRow></TableHead>
+        <TableBody>{visible.map((item) => <TableRow key={item.uuid} hover>
+          <TableCell><Stack direction="row" spacing={1.25} alignItems="center"><Avatar sx={{ width: 34, height: 34, bgcolor: 'action.selected', color: 'primary.main', fontSize: 12, fontWeight: 700 }}>{initials(item.alunoNome)}</Avatar><Box><Typography variant="body2" fontWeight={700}>{item.alunoNome || 'Aluno'}</Typography>{item.alunoMatricula && <Typography variant="caption" color="text.secondary">{item.alunoMatricula}</Typography>}</Box></Stack></TableCell>
+          <TableCell><Typography variant="body2" fontWeight={700}>{item.atividadeTitulo}</Typography><Typography variant="caption" color="text.secondary">{item.funcaoNome}()</Typography></TableCell>
+          <TableCell><Chip size="small" color={statusInfo(item.status).color} label={statusInfo(item.status).label} /></TableCell>
+          <TableCell><Typography variant="body2" fontWeight={700}>{formatScore(item.nota, item.pontosTotal)}</Typography></TableCell>
+          <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatSubmissionDate(item.dataSubmissao)}</Typography></TableCell>
+          <TableCell align="right"><Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />} onClick={() => navigate(`/submissoes/${item.uuid}`)}>Ver detalhes</Button></TableCell>
+        </TableRow>)}
+          {!filtered.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6 }}><Typography color="text.secondary">{turmaSubmissions.length ? 'Nenhuma submissão corresponde aos filtros.' : 'Ainda não há submissões nesta turma.'}</Typography></TableCell></TableRow>}
+        </TableBody></Table></TableContainer>
+      <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}><Typography variant="caption" color="text.secondary">Mostrando {visible.length} de {filtered.length} submissões</Typography><Pagination page={page} count={Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))} onChange={(_, value) => setPage(value)} size="small" color="primary" /></Box>
+    </Card>}
+  </Stack>;
 }

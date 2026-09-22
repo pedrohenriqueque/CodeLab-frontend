@@ -2,10 +2,10 @@
  * CreateActivityWizard — Wizard multi-etapas para criar e editar atividades.
  *
  * Etapas:
- *   1. Informações (Título, Descrição, Datas de Abertura/Fechamento, Pontuação Máxima, Tipo)
+ *   1. Informações (Título, Descrição, Datas de Abertura/Fechamento, Pontuação Máxima)
  *   2. Funções (Seleção direta da biblioteca, ajuste de dificuldade contextual e pontuação por função)
  *   3. Casos de teste (Seleção individual por caso com toggle interativo de visibilidade Visível / Oculto)
- *   4. Configurações (Múltiplas submissões, limite de tentativas, bloqueio de paste, visibilidade pós-envio)
+ *   4. Configurações (tipo e regras de submissão)
  *   5. Revisão e Validação (Checklist em tempo real de critérios de validação + Publicação/Rascunho)
  */
 
@@ -55,9 +55,11 @@ import {
   associarFuncaoAtividade,
   atualizarFuncaoAtividade,
   removerFuncaoAtividade,
+  publicarAtividade,
 } from "../api";
 import { getBibliotecaFuncoes, getCasosTeste } from "../../funcoes/api";
 import { useSnackbar } from "../../../shared/hooks/useSnackbar";
+import { useTurmaContext } from "../../turmas/context/TurmaContext";
 
 const STEPS = [
   { id: 1, label: "Informações" },
@@ -90,6 +92,7 @@ export default function CreateActivityWizard() {
   const navigate = useNavigate();
   const { uuid } = useParams();
   const { showSuccess, showError } = useSnackbar();
+  const { turmaAtiva } = useTurmaContext();
 
   // Estados principais
   const [step, setStep] = useState(1);
@@ -109,7 +112,7 @@ export default function CreateActivityWizard() {
     description: "",
     openDate: "",
     closeDate: "",
-    maxPoints: "100",
+    maxPoints: "10",
     tipo: "exercicio",
   });
 
@@ -154,10 +157,10 @@ export default function CreateActivityWizard() {
             setInfo({
               title: ativ.titulo || "",
               description: ativ.descricao || "",
-              openDate: ativ.dataAbertura ? ativ.dataAbertura.slice(0, 10) : "",
-              closeDate: ativ.dataFechamento ? ativ.dataFechamento.slice(0, 10) : "",
-              maxPoints: String(ativ.pontuacaoMaxima || 100),
-              tipo: ativ.tipo || "exercicio",
+              openDate: (ativ.inicioEm || ativ.dataAbertura) ? (ativ.inicioEm || ativ.dataAbertura).slice(0, 10) : "",
+              closeDate: (ativ.fimEm || ativ.dataFechamento) ? (ativ.fimEm || ativ.dataFechamento).slice(0, 10) : "",
+              maxPoints: "10",
+              tipo: String(ativ.tipo || "EXERCICIO").toLowerCase(),
             });
 
             setConfig({
@@ -208,11 +211,11 @@ export default function CreateActivityWizard() {
                   return {
                     id: tcId,
                     numero: tc.numero || idx + 1,
-                    inputStr: typeof tc.inputs === "object" ? JSON.stringify(tc.inputs) : String(tc.inputs || ""),
+                    inputStr: typeof (tc.entradas ?? tc.inputs) === "object" ? JSON.stringify(tc.entradas ?? tc.inputs) : String(tc.entradas ?? tc.inputs ?? ""),
                     outputStr:
-                      typeof tc.outputEsperado === "object" && tc.outputEsperado !== null
-                        ? tc.outputEsperado?.valor ?? JSON.stringify(tc.outputEsperado)
-                        : String(tc.outputEsperado || tc.output_esperado || ""),
+                      typeof (tc.retornoEsperado ?? tc.outputEsperado) === "object" && (tc.retornoEsperado ?? tc.outputEsperado) !== null
+                        ? (tc.retornoEsperado ?? tc.outputEsperado)?.valor ?? JSON.stringify(tc.retornoEsperado ?? tc.outputEsperado)
+                        : String(tc.retornoEsperado ?? tc.outputEsperado ?? tc.output_esperado ?? ""),
                     selected: isSelected,
                     visible: isVisible,
                   };
@@ -220,12 +223,12 @@ export default function CreateActivityWizard() {
 
                 return {
                   fnId: fUuid,
-                  name: f.nomeFuncao || f.nome_funcao || libFn.nomeFuncao,
-                  signature: `${f.nomeFuncao || f.nome_funcao || libFn.nomeFuncao}()`,
-                  description: f.descricao || libFn.descricao || "",
-                  difficulty: f.dificuldade || libFn.dificuldadePadrao || "medio",
-                  defaultDifficulty: libFn.dificuldadePadrao || f.dificuldadePadrao || "medio",
-                  points: Number(f.peso) || 10,
+                  name: f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao,
+                  signature: `${f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao}()`,
+                  description: f.descricao || libFn.enunciado || libFn.descricao || "",
+                  difficulty: f.dificuldade || libFn.dificuldade || libFn.dificuldadePadrao || "medio",
+                  defaultDifficulty: libFn.dificuldade || libFn.dificuldadePadrao || f.dificuldadePadrao || "medio",
+                  points: Number(f.notaMaxima) || 10,
                   cases,
                 };
               })
@@ -256,8 +259,8 @@ export default function CreateActivityWizard() {
     const q = pickerSearch.toLowerCase();
     return availableToAdd.filter(
       (f) =>
-        (f.nomeFuncao || f.nome_funcao || "").toLowerCase().includes(q) ||
-        (f.descricao || "").toLowerCase().includes(q)
+        (f.nome || f.nomeFuncao || f.nome_funcao || "").toLowerCase().includes(q) ||
+        (f.enunciado || f.descricao || "").toLowerCase().includes(q)
     );
   }, [availableToAdd, pickerSearch]);
 
@@ -283,11 +286,11 @@ export default function CreateActivityWizard() {
     const cases = (canonicalCases || []).map((tc, idx) => ({
       id: tc.uuid || tc.casoTesteUuid || tc.caso_teste_uuid,
       numero: tc.numero || idx + 1,
-      inputStr: typeof tc.inputs === "object" ? JSON.stringify(tc.inputs) : String(tc.inputs || ""),
+      inputStr: typeof (tc.entradas ?? tc.inputs) === "object" ? JSON.stringify(tc.entradas ?? tc.inputs) : String(tc.entradas ?? tc.inputs ?? ""),
       outputStr:
-        typeof tc.outputEsperado === "object" && tc.outputEsperado !== null
-          ? tc.outputEsperado?.valor ?? JSON.stringify(tc.outputEsperado)
-          : String(tc.outputEsperado || tc.output_esperado || ""),
+        typeof (tc.retornoEsperado ?? tc.outputEsperado) === "object" && (tc.retornoEsperado ?? tc.outputEsperado) !== null
+          ? (tc.retornoEsperado ?? tc.outputEsperado)?.valor ?? JSON.stringify(tc.retornoEsperado ?? tc.outputEsperado)
+          : String(tc.retornoEsperado ?? tc.outputEsperado ?? tc.output_esperado ?? ""),
       selected: true,
       visible: idx < 2, // os 2 primeiros visíveis por padrão como no design
     }));
@@ -296,11 +299,11 @@ export default function CreateActivityWizard() {
       ...prev,
       {
         fnId: libFn.uuid,
-        name: libFn.nomeFuncao || libFn.nome_funcao,
-        signature: `${libFn.nomeFuncao || libFn.nome_funcao}()`,
-        description: libFn.descricao || "",
-        difficulty: libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
-        defaultDifficulty: libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+        name: libFn.nome || libFn.nomeFuncao || libFn.nome_funcao,
+        signature: `${libFn.nome || libFn.nomeFuncao || libFn.nome_funcao}()`,
+        description: libFn.enunciado || libFn.descricao || "",
+        difficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+        defaultDifficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
         points: 10,
         cases,
       },
@@ -355,7 +358,7 @@ export default function CreateActivityWizard() {
     }
     if (s === 3) {
       selected.forEach((sf) => {
-        const chosen = sf.cases.filter((c) => c.selected).length;
+        const chosen = sf.cases.length;
         if (chosen === 0) {
           errors[`cases_${sf.fnId}`] = `${sf.name}: selecione ao menos um caso de teste para avaliação.`;
         }
@@ -389,25 +392,24 @@ export default function CreateActivityWizard() {
       const payloadAtividade = {
         titulo: info.title.trim(),
         descricao: info.description.trim() || null,
-        tipo: info.tipo || "exercicio",
-        status: publish ? "publicado" : "rascunho",
-        pontuacaoMaxima: Number(info.maxPoints),
-        bloquearPaste: config.bloquearPaste,
-        notasLiberadas: config.testsVisible,
+        inicioEm: new Date(info.openDate + "T00:00:00").toISOString(),
+        fimEm: new Date(info.closeDate + "T23:59:59").toISOString(),
+        tipo: info.tipo === "prova" ? "PROVA" : "EXERCICIO",
+        permitirMultiplasSubmissoes: info.tipo === "exercicio" && config.allowMultiple,
+        maxTentativasPorFuncao: info.tipo === "exercicio" && config.allowMultiple ? Number(config.maxAttempts) : null,
+        mostrarOcultosAposFechamento: info.tipo === "exercicio" && config.testsVisible,
       };
 
-      if (info.openDate) {
-        payloadAtividade.dataAbertura = new Date(info.openDate + "T00:00:00").toISOString();
-      }
-      if (info.closeDate) {
-        payloadAtividade.dataFechamento = new Date(info.closeDate + "T23:59:59").toISOString();
-      }
+      if (!uuid) payloadAtividade.turmaUuid = turmaAtiva.uuid;
 
       let atividadeTargetUuid = uuid;
 
       if (uuid) {
         // Atualiza atividade existente
-        await updateAtividade(uuid, payloadAtividade);
+        // O contrato de edição ainda não permite trocar o tipo da atividade.
+        // As demais configurações continuam sendo atualizadas.
+        const { tipo, ...payloadEdicao } = payloadAtividade;
+        await updateAtividade(uuid, payloadEdicao);
       } else {
         // Cria nova atividade
         const novaAtiv = await createAtividade(payloadAtividade);
@@ -432,32 +434,23 @@ export default function CreateActivityWizard() {
       // 2. Associar novas ou atualizar existentes
       for (let i = 0; i < selected.length; i++) {
         const sf = selected[i];
-        const casosPayload = sf.cases
-          .filter((c) => c.selected)
-          .map((c) => ({
-            casoTesteUuid: c.id,
-            oculto: !c.visible,
-          }));
-
         if (!remoteIds.has(sf.fnId)) {
           // Associar nova
           await associarFuncaoAtividade(atividadeTargetUuid, {
             funcaoUuid: sf.fnId,
-            dificuldade: sf.difficulty,
-            peso: Number(sf.points),
-            ordem: i + 1,
-            casosTeste: casosPayload,
+            dificuldade: String(sf.difficulty).toUpperCase(),
+            notaMaxima: Number(sf.points),
           });
         } else {
           // Atualizar existente
           await atualizarFuncaoAtividade(atividadeTargetUuid, sf.fnId, {
-            dificuldade: sf.difficulty,
-            peso: Number(sf.points),
-            ordem: i + 1,
-            casosTeste: casosPayload,
+            dificuldade: String(sf.difficulty).toUpperCase(),
+            notaMaxima: Number(sf.points),
           });
         }
       }
+
+      if (publish) await publicarAtividade(atividadeTargetUuid);
 
       showSuccess(
         publish ? "Atividade publicada com sucesso!" : "Rascunho salvo com sucesso!"
@@ -709,7 +702,7 @@ export default function CreateActivityWizard() {
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
-                  Pontuação máxima da atividade <span style={{ color: "#EF4444" }}>*</span>
+                  Nota total da atividade <span style={{ color: "#EF4444" }}>*</span>
                 </Typography>
                 <TextField
                   type="number"
@@ -724,43 +717,6 @@ export default function CreateActivityWizard() {
                 />
               </Box>
 
-              <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.75, color: "#334155" }}>
-                  Tipo de Atividade
-                </Typography>
-                <Box sx={{ display: "flex", gap: 1.5, mt: 0.5 }}>
-                  {[
-                    { key: "exercicio", label: "Exercício de Prática" },
-                    { key: "prova", label: "Prova Avaliativa" },
-                  ].map((t) => {
-                    const sel = info.tipo === t.key;
-                    return (
-                      <Box
-                        key={t.key}
-                        onClick={() => setInfo({ ...info, tipo: t.key })}
-                        sx={{
-                          flex: 1,
-                          p: 1.5,
-                          borderRadius: 2,
-                          border: "1.5px solid",
-                          borderColor: sel ? "#4F46E5" : "#E2E8F0",
-                          backgroundColor: sel ? "#EEF2FF" : "#FFFFFF",
-                          cursor: "pointer",
-                          textAlign: "center",
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: sel ? 700 : 500, color: sel ? "#4F46E5" : "#475569" }}
-                        >
-                          {t.label}
-                        </Typography>
-                      </Box>
-                    );
-                  })}
-                </Box>
-              </Box>
             </Box>
           </Box>
         </Card>
@@ -924,7 +880,7 @@ export default function CreateActivityWizard() {
                       variant="caption"
                       sx={{ fontWeight: 700, color: "#475569", mb: 1, display: "block" }}
                     >
-                      Pontuação nesta atividade:
+                      Nota máxima nesta atividade:
                     </Typography>
                     <TextField
                       type="number"
@@ -994,15 +950,13 @@ export default function CreateActivityWizard() {
           >
             <InfoOutlinedIcon sx={{ fontSize: 20, mt: 0.2, color: "#4F46E5" }} />
             <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
-              Selecione quais casos de teste da função serão usados nesta atividade e defina a
-              visibilidade de cada um. <strong>Somente os casos selecionados serão avaliados</strong>;
-              os casos ocultos avaliam a submissão, mas o aluno não vê as entradas/saídas antes da entrega.
+              Confira os casos de teste que serão copiados para o snapshot desta atividade. Todos os casos cadastrados para a função serão usados; esta tela é apenas de visualização.
             </Typography>
           </Box>
 
           {selected.map((sf) => {
-            const chosenCount = sf.cases.filter((c) => c.selected).length;
-            const visibleCount = sf.cases.filter((c) => c.selected && c.visible).length;
+            const chosenCount = sf.cases.length;
+            const visibleCount = sf.cases.filter((c) => c.visible).length;
             const err = stepErrors[`cases_${sf.fnId}`];
             const diffBadge = getDifficultyBadge(sf.difficulty);
 
@@ -1034,7 +988,7 @@ export default function CreateActivityWizard() {
                       {sf.signature}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {chosenCount} de {sf.cases.length} casos usados · {visibleCount} visíve
+                      {chosenCount} caso{chosenCount !== 1 ? "s" : ""} copiado{chosenCount !== 1 ? "s" : ""} · {visibleCount} visíve
                       {visibleCount !== 1 ? "is" : "l"}
                     </Typography>
                   </Box>
@@ -1076,9 +1030,6 @@ export default function CreateActivityWizard() {
                       <Box component="thead">
                         <Box component="tr" sx={{ borderBottom: "1.5px solid #E2E8F0" }}>
                           <Box component="th" sx={{ py: 1.5, px: 1.5, width: 60, color: "#64748B" }}>
-                            Usar
-                          </Box>
-                          <Box component="th" sx={{ py: 1.5, px: 1.5, width: 60, color: "#64748B" }}>
                             Caso
                           </Box>
                           <Box component="th" sx={{ py: 1.5, px: 1.5, color: "#64748B" }}>
@@ -1099,39 +1050,12 @@ export default function CreateActivityWizard() {
                             key={tc.id}
                             sx={{
                               borderBottom: "1px solid #F1F5F9",
-                              opacity: tc.selected ? 1 : 0.4,
-                              backgroundColor: tc.selected ? "transparent" : "#F8FAFC",
+                              opacity: 1,
+                              backgroundColor: "transparent",
                               transition: "all 0.15s",
                             }}
                           >
-                            <Box component="td" sx={{ py: 1.5, px: 1.5 }}>
-                              <Box
-                                component="button"
-                                type="button"
-                                role="checkbox"
-                                aria-checked={tc.selected}
-                                onClick={() =>
-                                  updateCase(sf.fnId, tc.id, { selected: !tc.selected })
-                                }
-                                sx={{
-                                  width: 22,
-                                  height: 22,
-                                  borderRadius: 1,
-                                  border: "1.5px solid",
-                                  borderColor: tc.selected ? "#4F46E5" : "#CBD5E1",
-                                  backgroundColor: tc.selected ? "#4F46E5" : "#FFFFFF",
-                                  color: "#FFFFFF",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s",
-                                }}
-                              >
-                                {tc.selected && <CheckIcon sx={{ fontSize: 16 }} />}
-                              </Box>
-                            </Box>
-                            <Box component="td" sx={{ py: 1.5, px: 1.5, color: "#64748B", fontWeight: 600 }}>
+<Box component="td" sx={{ py: 1.5, px: 1.5, color: "#64748B", fontWeight: 600 }}>
                               #{idx + 1}
                             </Box>
                             <Box
@@ -1161,12 +1085,7 @@ export default function CreateActivityWizard() {
                             </Box>
                             <Box component="td" sx={{ py: 1.5, px: 1.5 }}>
                               <Box
-                                component="button"
-                                type="button"
-                                disabled={!tc.selected}
-                                onClick={() =>
-                                  updateCase(sf.fnId, tc.id, { visible: !tc.visible })
-                                }
+                                component="span"
                                 sx={{
                                   fontSize: "0.75rem",
                                   fontWeight: 600,
@@ -1177,7 +1096,7 @@ export default function CreateActivityWizard() {
                                   borderColor: tc.visible ? "#A7F3D0" : "#E2E8F0",
                                   backgroundColor: tc.visible ? "#ECFDF5" : "#F1F5F9",
                                   color: tc.visible ? "#059669" : "#64748B",
-                                  cursor: tc.selected ? "pointer" : "not-allowed",
+                                  cursor: "default",
                                   transition: "all 0.15s",
                                   display: "inline-flex",
                                   alignItems: "center",
@@ -1222,11 +1141,25 @@ export default function CreateActivityWizard() {
             Configurações da atividade
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Defina regras de submissão e segurança de código para os alunos.
+            Escolha o tipo e confira as regras aplicáveis aos alunos.
           </Typography>
 
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 640 }}>
-            {/* Switch 1: Múltiplas submissões */}
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+              {[
+                { key: "exercicio", title: "Exercício de prática", description: "Permite múltiplas tentativas e oferece feedback para ajudar o aluno a melhorar sua solução." },
+                { key: "prova", title: "Trabalho avaliativo", description: "Permite uma única entrega por função e mantém os resultados ocultos para o aluno." },
+              ].map((option) => {
+                const selectedType = info.tipo === option.key;
+                return <Box key={option.key} onClick={() => setInfo({ ...info, tipo: option.key })} sx={{ p: 2, borderRadius: 2, cursor: "pointer", border: "1.5px solid", borderColor: selectedType ? "#4F46E5" : "#E2E8F0", backgroundColor: selectedType ? "#EEF2FF" : "#FFFFFF" }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: selectedType ? "#4338CA" : "#1E293B", mb: 0.5 }}>{option.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">{option.description}</Typography>
+                </Box>;
+              })}
+            </Box>
+
+            {info.tipo === "exercicio" ? <>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B" }}>Configurações do exercício</Typography>
             <Box
               sx={{
                 display: "flex",
@@ -1267,7 +1200,6 @@ export default function CreateActivityWizard() {
               </Box>
             )}
 
-            {/* Switch 2: Testes ocultos visíveis após envio */}
             <Box
               sx={{
                 display: "flex",
@@ -1279,10 +1211,10 @@ export default function CreateActivityWizard() {
             >
               <Box sx={{ pr: 2 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
-                  Testes ocultos visíveis após submissão
+                  Mostrar resultados dos testes ocultos após o fechamento
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  O aluno poderá conferir os relatórios detalhados dos casos ocultos após a entrega final.
+                  Define se os resultados detalhados dos casos ocultos ficarão disponíveis depois da data de fechamento.
                 </Typography>
               </Box>
               <Switch
@@ -1292,29 +1224,14 @@ export default function CreateActivityWizard() {
               />
             </Box>
 
-            {/* Switch 3: Bloquear Copiar e Colar (Paste) */}
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                py: 2,
-              }}
-            >
-              <Box sx={{ pr: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
-                  Bloquear Copiar e Colar (Paste)
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Impede a colagem de trechos externos no editor Monaco, incentivando escrita autêntica.
-                </Typography>
-              </Box>
-              <Switch
-                checked={config.bloquearPaste}
-                onChange={(e) => setConfig({ ...config, bloquearPaste: e.target.checked })}
-                color="primary"
-              />
-            </Box>
+            </> : <Box sx={{ p: 2.5, borderRadius: 2, backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B", mb: 2 }}>Regras do trabalho avaliativo</Typography>
+              {[
+                ["Uma única entrega por função", "O aluno poderá enviar apenas uma solução para cada função da atividade."],
+                ["Resultados ocultos para o aluno", "O CodeLab corrige e armazena a nota e os resultados de cada função, sem exibi-los ao aluno durante a atividade."],
+                ["Conclusão automática", "A atividade será marcada como concluída quando o aluno tiver enviado uma solução para todas as funções."],
+              ].map(([title, description]) => <Box key={title} sx={{ mb: 1.75 }}><Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Box>)}
+            </Box>}
           </Box>
         </Card>
       )}
@@ -1322,11 +1239,11 @@ export default function CreateActivityWizard() {
       {/* ─── ETAPA 5: Revisão ────────────────────────────────────────── */}
       {step === 5 && (() => {
         const totalUsedCases = selected.reduce(
-          (s, sf) => s + sf.cases.filter((c) => c.selected).length,
+          (s, sf) => s + sf.cases.length,
           0
         );
         const allFnsHaveCases =
-          selected.length > 0 && selected.every((sf) => sf.cases.some((c) => c.selected));
+          selected.length > 0 && selected.every((sf) => sf.cases.length > 0);
         const periodValid = !!info.openDate && !!info.closeDate && info.closeDate >= info.openDate;
         const ptsMatch = Math.abs(totalPoints - Number(info.maxPoints || 0)) < 0.01;
 
@@ -1342,12 +1259,12 @@ export default function CreateActivityWizard() {
             ok: selected.length > 0,
           },
           {
-            label: `${totalUsedCases} caso${totalUsedCases !== 1 ? "s" : ""} de teste em uso`,
+            label: `${totalUsedCases} caso${totalUsedCases !== 1 ? "s" : ""} de teste copiado${totalUsedCases !== 1 ? "s" : ""}`,
             ok: totalUsedCases > 0 && allFnsHaveCases,
           },
           { label: "Período de vigência válido", ok: periodValid },
           {
-            label: `Soma dos pesos: ${totalPoints} / ${info.maxPoints} pts`,
+            label: `Soma das notas: ${totalPoints} / 10 pts`,
             ok: ptsMatch,
           },
         ];
@@ -1378,7 +1295,7 @@ export default function CreateActivityWizard() {
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Pontuação máxima
+                      Nota máxima
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
                       {info.maxPoints} pts
@@ -1406,12 +1323,12 @@ export default function CreateActivityWizard() {
                   </Box>
                   <Box sx={{ gridColumn: { sm: "span 2" } }}>
                     <Typography variant="caption" color="text.secondary">
-                      Múltiplas submissões
+                      Tipo e regras
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
-                      {config.allowMultiple
-                        ? `Sim (máximo de ${config.maxAttempts} tentativas por função)`
-                        : "Não (tentativa única)"}
+                      {info.tipo === "prova"
+                        ? "Trabalho avaliativo · Uma entrega por função · Resultados ocultos para o aluno · Conclusão automática após o envio de todas as funções"
+                        : `Exercício de prática · ${config.allowMultiple ? `Múltiplas tentativas (máximo de ${config.maxAttempts} por função)` : "Uma tentativa por função"} · Resultados ocultos disponíveis após o fechamento: ${config.testsVisible ? "Sim" : "Não"}`}
                     </Typography>
                   </Box>
                   {info.description && (
@@ -1434,8 +1351,8 @@ export default function CreateActivityWizard() {
                 </Typography>
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
                   {selected.map((sf, idx) => {
-                    const chosen = sf.cases.filter((c) => c.selected).length;
-                    const visibleCount = sf.cases.filter((c) => c.selected && c.visible).length;
+                    const chosen = sf.cases.length;
+                    const visibleCount = sf.cases.length;
                     const diffBadge = getDifficultyBadge(sf.difficulty);
 
                     return (
@@ -1740,7 +1657,7 @@ export default function CreateActivityWizard() {
           ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, maxHeight: 380, overflowY: "auto", pr: 0.5 }}>
               {filteredAvailable.map((fn) => {
-                const diff = getDifficultyBadge(fn.dificuldadePadrao || fn.dificuldade_padrao);
+                const diff = getDifficultyBadge(fn.dificuldade || fn.dificuldadePadrao || fn.dificuldade_padrao);
                 const testCasesCount =
                   fn.totalCasosTeste ??
                   fn.total_casos_teste ??
@@ -1782,7 +1699,7 @@ export default function CreateActivityWizard() {
                           variant="subtitle2"
                           sx={{ fontWeight: 700, fontFamily: "monospace", color: "#0F172A" }}
                         >
-                          {fn.nomeFuncao || fn.nome_funcao}()
+                          {fn.nome || fn.nomeFuncao || fn.nome_funcao}()
                         </Typography>
                         <Chip
                           label={diff.label}
@@ -1806,7 +1723,7 @@ export default function CreateActivityWizard() {
                           overflow: "hidden",
                         }}
                       >
-                        {fn.descricao || "Sem descrição"}
+                        {fn.enunciado || fn.descricao || "Sem descrição"}
                       </Typography>
                       <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.5 }}>
                         {testCasesCount} casos de teste cadastrados

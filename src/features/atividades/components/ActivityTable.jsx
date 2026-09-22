@@ -27,9 +27,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 
 const STATUS_MAP = {
-  rascunho: { label: 'Rascunho', color: 'warning' },
-  publicado: { label: 'Publicado', color: 'success' },
-  fechado: { label: 'Fechado', color: 'default' },
+  RASCUNHO: { label: 'Rascunho', color: 'warning' },
+  PUBLICADA: { label: 'Publicado', color: 'success' },
+  ENCERRADA: { label: 'Encerrada', color: 'default' },
 };
 
 function formatDate(isoString) {
@@ -67,7 +67,7 @@ export default function ActivityTable({ atividades = [], onView, onEdit }) {
         </TableHead>
         <TableBody>
           {atividades.map((atv) => {
-            const status = STATUS_MAP[atv.status] || STATUS_MAP.rascunho;
+            const status = STATUS_MAP[atv.status] || STATUS_MAP.RASCUNHO;
             return (
               <TableRow key={atv.uuid} hover>
                 <TableCell>
@@ -108,10 +108,10 @@ export default function ActivityTable({ atividades = [], onView, onEdit }) {
                       <VisibilityIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Editar">
-                    <IconButton size="small" onClick={() => onEdit?.(atv.uuid)}>
+                  <Tooltip title={atv.status === 'RASCUNHO' ? 'Editar rascunho' : 'Somente rascunhos podem ser editados'}><span>
+                    <IconButton aria-label="Editar atividade" disabled={atv.status !== 'RASCUNHO'} size="small" onClick={() => onEdit?.(atv.uuid)}>
                       <EditIcon fontSize="small" />
-                    </IconButton>
+                    </IconButton></span>
                   </Tooltip>
                   <Tooltip title="Ver submissões">
                     <IconButton size="small" onClick={() => onView?.(atv.uuid)}>

@@ -22,13 +22,15 @@ export async function loginApi(email, senha) {
       },
     });
     
+    const payload = JSON.parse(atob(data.accessToken.split('.')[1]));
+    const { data: user } = await httpClient.get('/api/auth/me', { headers: { Authorization: `Bearer ${data.accessToken}` } });
     return {
-      user: data.user,
-      token: data.access_token,
+      user: { ...user, perfil: user.perfil || payload.perfil },
+      token: data.accessToken,
     };
   } catch (error) {
-    if (error.response?.data?.detail) {
-      throw new Error(error.response.data.detail);
+    if (error.response?.data?.erro) {
+      throw new Error(error.response.data.erro);
     }
     if (error.response?.status === 401) {
       throw new Error('E-mail ou senha incorretos. Verifique suas credenciais.');
@@ -44,7 +46,7 @@ export async function loginApi(email, senha) {
  */
 export async function registerApi({ nome, matricula, email, senha }) {
   try {
-    const { data } = await httpClient.post('/api/auth/register', {
+    const { data } = await httpClient.post('/api/auth/cadastro', {
       nome: nome.trim(),
       matricula: matricula.trim(),
       email: email.trim().toLowerCase(),
@@ -52,12 +54,12 @@ export async function registerApi({ nome, matricula, email, senha }) {
     });
 
     return {
-      user: data.user,
-      token: data.access_token,
+      user: data.usuario,
+      token: data.accessToken,
     };
   } catch (error) {
-    if (error.response?.data?.detail) {
-      throw new Error(error.response.data.detail);
+    if (error.response?.data?.erro) {
+      throw new Error(error.response.data.erro);
     }
     if (error.response?.status === 409) {
       throw new Error('Este e-mail institucional já possui cadastro no CodeLab.');

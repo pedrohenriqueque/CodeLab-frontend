@@ -16,33 +16,41 @@ import {
   MenuItem,
   CircularProgress,
   Divider,
+  Alert,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import SaveIcon from '@mui/icons-material/Save';
 
-const C_TYPES = ['int', 'float', 'double', 'char', 'long', 'void'];
+const C_TYPES = ['int', 'long', 'float', 'double', 'char', 'bool', 'string'];
 
 const INITIAL_STATE = {
-  nomeFuncao: '',
-  descricao: '',
-  retorno: 'int',
-  dificuldadePadrao: 'medio',
+  nomeFuncao: '', enunciado: '', retorno: 'int', dificuldadePadrao: 'MEDIO', compartilhada: true,
   parametros: [{ nome: 'a', tipo: 'int' }],
 };
+
+function getApiErrorMessage(error) {
+  const data = error.response?.data;
+  if (data?.campos?.length) {
+    return `${data.erro || 'Dados inválidos.'} Verifique: ${data.campos.join(', ')}.`;
+  }
+  return data?.erro || 'Não foi possível salvar a função.';
+}
 
 export default function FunctionFormDialog({ open, onClose, onSave, initialData }) {
   const [form, setForm] = useState(INITIAL_STATE);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (open) {
+      setFormError('');
       if (initialData) {
         setForm({
-          nomeFuncao: initialData.nomeFuncao || initialData.nome_funcao || '',
-          descricao: initialData.descricao || '',
-          retorno: initialData.retorno?.tipo || initialData.retorno || 'int',
-          dificuldadePadrao: initialData.dificuldadePadrao || initialData.dificuldade_padrao || initialData.dificuldade || 'medio',
+          nomeFuncao: initialData.nome || '', enunciado: initialData.enunciado || '', retorno: initialData.tipoRetorno || 'int',
+          dificuldadePadrao: initialData.dificuldade || 'MEDIO', compartilhada: initialData.compartilhada || false,
           parametros: initialData.parametros?.length
             ? initialData.parametros.map((p) => ({ nome: p.nome, tipo: p.tipo }))
             : [{ nome: 'a', tipo: 'int' }],
@@ -87,15 +95,16 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
 
     setSaving(true);
     try {
+      setFormError('');
       const payload = {
-        nomeFuncao: form.nomeFuncao.trim(),
-        descricao: form.descricao?.trim() || null,
-        retorno: { tipo: form.retorno },
-        dificuldadePadrao: form.dificuldadePadrao,
+        nome: form.nomeFuncao.trim(), enunciado: form.enunciado.trim(), tipoRetorno: form.retorno,
+        dificuldade: form.dificuldadePadrao, ...(initialData ? { compartilhada: form.compartilhada } : {}),
         parametros: form.parametros.filter((p) => p.nome && p.nome.trim()),
       };
       await onSave(payload);
       onClose();
+    } catch (error) {
+      setFormError(getApiErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -107,13 +116,15 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{ component: 'form', onSubmit: handleSubmit, sx: { borderRadius: 3 } }}
+      PaperProps={{ sx: { borderRadius: 3 } }}
     >
-      <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#1E293B' }}>
-        {initialData ? 'Editar Função na Biblioteca' : 'Nova Função na Biblioteca'}
-      </DialogTitle>
-      <DialogContent dividers sx={{ borderColor: '#E2E8F0' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#1E293B' }}>
+          {initialData ? 'Editar Função na Biblioteca' : 'Nova Função na Biblioteca'}
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: '#E2E8F0' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+          {formError && <Alert severity="error">{formError}</Alert>}
           <TextField
             id="funcao-nome"
             label="Nome da Função"
@@ -135,8 +146,9 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
           <TextField
             id="funcao-descricao"
             label="Descrição / Enunciado"
-            value={form.descricao}
-            onChange={handleChange('descricao')}
+            value={form.enunciado}
+            onChange={handleChange('enunciado')}
+            required
             fullWidth
             multiline
             rows={3}
@@ -167,11 +179,26 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
               onChange={handleChange('dificuldadePadrao')}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             >
-              <MenuItem value="facil">Fácil</MenuItem>
-              <MenuItem value="medio">Médio</MenuItem>
-              <MenuItem value="dificil">Difícil</MenuItem>
+              <MenuItem value="FACIL">Fácil</MenuItem><MenuItem value="MEDIO">Médio</MenuItem><MenuItem value="DIFICIL">Difícil</MenuItem>
             </TextField>
           </Box>
+
+          {initialData && (
+            <>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={form.compartilhada}
+                    onChange={(event) => setForm((previous) => ({ ...previous, compartilhada: event.target.checked }))}
+                  />
+                }
+                label="Compartilhar com outros professores"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -2 }}>
+                Funções novas já são compartilhadas. Cópias duplicadas começam privadas e podem ser compartilhadas aqui.
+              </Typography>
+            </>
+          )}
 
           <Divider />
 
@@ -249,26 +276,27 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
             </code>
           </Box>
         </Box>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={saving} sx={{ textTransform: 'none' }}>
-          Cancelar
-        </Button>
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={saving || !form.nomeFuncao.trim() || !nameValid}
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-          sx={{
-            borderRadius: 2,
-            px: 3,
-            textTransform: 'none',
-            fontWeight: 600,
-          }}
-        >
-          {saving ? 'Salvando...' : 'Salvar Função'}
-        </Button>
-      </DialogActions>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={onClose} disabled={saving} sx={{ textTransform: 'none' }}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={saving || !form.nomeFuncao.trim() || !nameValid}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            sx={{
+              borderRadius: 2,
+              px: 3,
+              textTransform: 'none',
+              fontWeight: 600,
+            }}
+          >
+            {saving ? 'Salvando...' : 'Salvar Função'}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 }

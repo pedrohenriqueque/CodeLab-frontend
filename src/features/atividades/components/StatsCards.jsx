@@ -10,8 +10,8 @@ import PublishIcon from '@mui/icons-material/Publish';
 import DraftsIcon from '@mui/icons-material/Drafts';
 
 export default function StatsCards({ atividades = [] }) {
-  const ativas = atividades.filter((a) => a.status === 'publicado').length;
-  const rascunhos = atividades.filter((a) => a.status === 'rascunho').length;
+  const ativas = atividades.filter((a) => a.status === 'PUBLICADA').length;
+  const rascunhos = atividades.filter((a) => a.status === 'RASCUNHO').length;
   const total = atividades.length;
 
   const cards = [

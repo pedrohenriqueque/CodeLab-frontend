@@ -1,24 +1,31 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
   Card,
   Grid,
   LinearProgress,
+  Alert,
+  Skeleton,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import SchoolIcon from '@mui/icons-material/School';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
-
-const ATIVIDADES_DESEMPENHO = [
-  { titulo: 'Trabalho 02 - Funções', entregues: 22, total: 32, media: 7.2, aprovacao: 82 },
-  { titulo: 'Trabalho 01 - Vetores', entregues: 27, total: 32, media: 8.5, aprovacao: 90 },
-  { titulo: 'Lista 03 - Estruturas', entregues: 19, total: 32, media: 6.8, aprovacao: 74 },
-  { titulo: 'Exercícios - Condicionais', entregues: 32, total: 32, media: 9.1, aprovacao: 97 },
-];
+import { getResultadosTurma } from '../../turmas/api';
+import { useTurmaContext } from '../../turmas/context/TurmaContext';
 
 export default function ResultadosPage() {
+  const { turmaAtiva } = useTurmaContext();
+  const [resultados, setResultados] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!turmaAtiva?.uuid) return;
+    getResultadosTurma(turmaAtiva.uuid).then(setResultados).catch((err) => setError(err.response?.data?.erro || 'Não foi possível carregar os resultados.'));
+  }, [turmaAtiva?.uuid]);
+  if (!turmaAtiva) return <Alert severity="info">Selecione uma turma para consultar os resultados.</Alert>;
+  if (error) return <Alert severity="error">{error}</Alert>;
+  if (!resultados) return <Skeleton variant="rounded" height={320} />;
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Header */}
@@ -40,7 +47,7 @@ export default function ResultadosPage() {
                 <SchoolIcon />
               </Box>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>6.8</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{resultados.mediaGeral == null ? '—' : Number(resultados.mediaGeral).toFixed(1)}</Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Média Geral</Typography>
               </Box>
             </Box>
@@ -53,7 +60,7 @@ export default function ResultadosPage() {
                 <CheckCircleIcon />
               </Box>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>85.7%</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{resultados.aprovacaoPercentual == null ? '—' : `${Number(resultados.aprovacaoPercentual).toFixed(1)}%`}</Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Taxa de Aprovação</Typography>
               </Box>
             </Box>
@@ -66,7 +73,7 @@ export default function ResultadosPage() {
                 <AssignmentTurnedInIcon />
               </Box>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>153</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{resultados.submissoesAvaliadas}</Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Submissões Avaliadas</Typography>
               </Box>
             </Box>
@@ -79,8 +86,8 @@ export default function ResultadosPage() {
                 <ShowChartIcon />
               </Box>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>+12%</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Evolução Semanal</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{resultados.atividades.length}</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Atividades publicadas</Typography>
               </Box>
             </Box>
           </Card>
@@ -93,33 +100,33 @@ export default function ResultadosPage() {
           Aproveitamento por Atividade
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {ATIVIDADES_DESEMPENHO.map((atv, idx) => (
-            <Box key={idx} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
+          {resultados.atividades.map((atv) => (
+            <Box key={atv.atividadeUuid} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                 <Box>
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>{atv.titulo}</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {atv.entregues} de {atv.total} alunos submeteram
+                    {atv.enviados} de {atv.totalAlunos} alunos enviaram
                   </Typography>
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
                   <Typography variant="body2" sx={{ fontWeight: 700, color: '#4F46E5' }}>
-                    Média {atv.media.toFixed(1)}
+                    Média {atv.mediaNota == null ? '—' : Number(atv.mediaNota).toFixed(1)}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {atv.aprovacao}% aprovados
+                    {atv.aprovacaoPercentual == null ? '—' : `${Number(atv.aprovacaoPercentual).toFixed(1)}% aprovados`}
                   </Typography>
                 </Box>
               </Box>
               <LinearProgress
                 variant="determinate"
-                value={atv.aprovacao}
+                value={Number(atv.aprovacaoPercentual) || 0}
                 sx={{
                   height: 8,
                   borderRadius: 4,
                   bgcolor: 'action.hover',
                   '& .MuiLinearProgress-bar': {
-                    bgcolor: atv.aprovacao >= 80 ? '#10B981' : '#F59E0B',
+                    bgcolor: atv.aprovacaoPercentual >= 80 ? '#10B981' : '#F59E0B',
                     borderRadius: 4,
                   },
                 }}

@@ -7,7 +7,7 @@
  *   - Envio de tentativa contextual: { atividadeUuid, funcaoUuid, codigo }.
  *   - Painel de feedback com resultado da avaliação e mascaramento estrito de casos ocultos.
  *   - Histórico isolado de tentativas para esta função específica nesta atividade.
- *   - Bloqueio quando a atividade já foi entregue (RN14) ou quando o prazo expirou.
+ *   - Bloqueio quando o prazo expirar ou a tentativa única de uma prova for usada.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -26,13 +26,13 @@ import {
   IconButton,
   Tooltip,
   Chip,
-  Divider,
   Skeleton,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  TableContainer,
   Paper,
   Accordion,
   AccordionSummary,
@@ -50,12 +50,10 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
-import { getFuncao, getAtividade } from '../../atividades/api';
+import { getFuncao, getAtividade, getFuncoesAtividade } from '../../atividades/api';
 import { createSubmissao, getSubmissoes } from '../api';
 import SubmissionResultCard from '../components/SubmissionResultCard';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
-import useProgresso from '../../atividades/hooks/useProgresso';
-import { useAuth } from '../../auth/hooks/useAuthProvider';
 
 const DIFICULDADE_COLORS = {
   facil: 'success',
@@ -83,7 +81,6 @@ export default function CodeSubmissionPage() {
   const { uuid: atividadeUuid, funcaoUuid } = useParams();
   const navigate = useNavigate();
   const { showSuccess, showError } = useSnackbar();
-  const { user } = useAuth();
 
   const [funcao, setFuncao] = useState(null);
   const [atividade, setAtividade] = useState(null);
@@ -94,20 +91,21 @@ export default function CodeSubmissionPage() {
   const [mostrarCasosTeste, setMostrarCasosTeste] = useState(false);
   const [historicoTentativas, setHistoricoTentativas] = useState([]);
 
-  const { progresso, refetch: refetchProgresso } = useProgresso(user?.uuid);
-  const funcProg = progresso.find(p => p.funcaoUuid === funcaoUuid);
-  const tentativasUsadas = funcProg?.tentativasUsadas || 0;
+  const tentativasUsadas = historicoTentativas.length;
 
   // Carregar histórico de tentativas desta função nesta atividade
   const fetchHistorico = useCallback(async () => {
     if (!funcaoUuid) return;
     try {
-      const subs = await getSubmissoes(funcaoUuid, null, atividadeUuid);
-      setHistoricoTentativas(Array.isArray(subs) ? subs : []);
+      const submissoes = await getSubmissoes();
+      setHistoricoTentativas(submissoes.filter((submissao) => (
+        submissao.funcaoUuid === funcaoUuid &&
+        (!atividadeUuid || submissao.atividadeUuid === atividadeUuid)
+      )));
     } catch {
-      setHistoricoTentativas([]);
+      showError('Erro ao carregar o histórico de tentativas');
     }
-  }, [funcaoUuid, atividadeUuid]);
+  }, [funcaoUuid, atividadeUuid, showError]);
 
   // Buscar detalhes da função e da atividade
   useEffect(() => {
@@ -117,7 +115,11 @@ export default function CodeSubmissionPage() {
         let atividadeData = null;
 
         if (atividadeUuid) {
-          atividadeData = await getAtividade(atividadeUuid);
+          const [atividadeBase, funcoesAtividade] = await Promise.all([
+            getAtividade(atividadeUuid),
+            getFuncoesAtividade(atividadeUuid),
+          ]);
+          atividadeData = { ...atividadeBase, funcoes: funcoesAtividade };
           setAtividade(atividadeData);
 
           // Obtém os dados contextuais da função diretamente da atividade
@@ -140,16 +142,18 @@ export default function CodeSubmissionPage() {
         const params = (funcaoData.parametros || [])
           .map((p) => `${p.tipo} ${p.nome}`)
           .join(', ');
-        const ret = funcaoData.retorno?.tipo || funcaoData.retorno || 'int';
-        setCodigo(`${ret} ${funcaoData.nomeFuncao}(${params}) {\n    // Seu código aqui\n    \n}`);
+        const ret = funcaoData.tipoRetorno || 'int';
+        setCodigo(`${ret} ${funcaoData.nome || funcaoData.nomeFuncao}(${params}) {\n    // Seu código aqui\n    \n}`);
       } catch {
         showError('Erro ao carregar dados da função ou da atividade');
       } finally {
         setLoading(false);
       }
     }
-    fetchData();
-    fetchHistorico();
+    async function loadPage() {
+      await Promise.all([fetchData(), fetchHistorico()]);
+    }
+    loadPage();
   }, [funcaoUuid, atividadeUuid, showError, fetchHistorico]);
 
   // Contextual attributes
@@ -157,30 +161,36 @@ export default function CodeSubmissionPage() {
   const pontosMax = af?.peso ?? funcao?.pontos ?? 10;
   const dificuldade = af?.dificuldade ?? funcao?.dificuldadePadrao ?? funcao?.dificuldade ?? 'medio';
   const casosTeste = af?.casosTeste || funcao?.casosTeste || [];
+  const isProva = atividade?.tipo?.toUpperCase() === 'PROVA';
+  const jaEnviouProva = isProva && historicoTentativas.some(
+    (tentativa) => !tentativa.falhaTecnica
+  );
 
   const isFechada =
-    atividade?.status === 'fechado' ||
+    atividade?.status === 'ENCERRADA' ||
     (atividade?.dataFechamento && new Date(atividade.dataFechamento) < new Date());
-
-  const isEntregue = atividade?.statusEntrega === 'entregue';
 
   const handleSubmit = async () => {
     if (!codigo.trim()) return;
     setSubmitting(true);
     setResultado(null);
     try {
-      const res = await createSubmissao(funcaoUuid, codigo, atividadeUuid);
+      const res = await createSubmissao(funcaoUuid, codigo);
       setResultado(res);
-      showSuccess('Submissão avaliada com sucesso!');
-      refetchProgresso();
-      fetchHistorico();
+      showSuccess(isProva ? 'Prova enviada com sucesso!' : 'Submissão avaliada com sucesso!');
+      await fetchHistorico();
     } catch (err) {
-      if (err.response?.status === 400 && err.response?.data?.detail?.includes('já entregue')) {
+      const apiMessage = err.response?.data?.erro || err.response?.data?.detail;
+      if (apiMessage?.includes('já entregue')) {
         showError('Esta atividade já foi entregue. Novas submissões não são permitidas.');
-      } else if (err.response?.status === 400 && err.response?.data?.detail?.includes('única tentativa')) {
+      } else if (
+        apiMessage?.includes('única tentativa') ||
+        apiMessage?.includes('limite de tentativas')
+      ) {
+        await fetchHistorico();
         showError('Você já utilizou sua tentativa para esta prova.');
       } else {
-        showError(err.response?.data?.detail || 'Erro ao submeter código');
+        showError(apiMessage || 'Erro ao submeter código');
       }
     } finally {
       setSubmitting(false);
@@ -192,8 +202,8 @@ export default function CodeSubmissionPage() {
       const params = (funcao.parametros || [])
         .map((p) => `${p.tipo} ${p.nome}`)
         .join(', ');
-      const ret = funcao.retorno?.tipo || funcao.retorno || 'int';
-      setCodigo(`${ret} ${funcao.nomeFuncao}(${params}) {\n    // Seu código aqui\n    \n}`);
+      const ret = funcao.tipoRetorno || 'int';
+      setCodigo(`${ret} ${funcao.nome || funcao.nomeFuncao}(${params}) {\n    // Seu código aqui\n    \n}`);
     }
     setResultado(null);
   };
@@ -242,7 +252,7 @@ export default function CodeSubmissionPage() {
           {atividade?.titulo || 'Detalhes'}
         </Link>
         <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
-          {funcao?.nomeFuncao || 'Submeter'}
+          {funcao?.nome || funcao?.nomeFuncao || 'Submeter'}
         </Typography>
       </Breadcrumbs>
 
@@ -257,7 +267,7 @@ export default function CodeSubmissionPage() {
           <CodeIcon color="primary" sx={{ fontSize: 28 }} />
           <Box>
             <Typography variant="h5" sx={{ fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: 1 }}>
-              {funcao?.nomeFuncao}()
+              {funcao?.nome || funcao?.nomeFuncao}()
               <Chip
                 label={DIFICULDADE_LABELS[dificuldade] || 'Médio'}
                 size="small"
@@ -287,16 +297,16 @@ export default function CodeSubmissionPage() {
       </Box>
 
       {/* Alerta de Atividade Entregue */}
-      {isEntregue && (
-        <Alert severity="success" icon={<TaskAltIcon />} sx={{ mb: 3, borderRadius: 2 }}>
-          Esta atividade já foi <strong>entregue</strong> por você. O envio de novas tentativas está encerrado, mas você pode visualizar seus códigos e resultados.
+      {/* Alerta de Prazo Encerrado */}
+      {isFechada && (
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
+          O prazo para entrega desta atividade encerrou. O envio de novas submissões está desabilitado.
         </Alert>
       )}
 
-      {/* Alerta de Prazo Encerrado */}
-      {isFechada && !isEntregue && (
-        <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
-          O prazo para entrega desta atividade encerrou. O envio de novas submissões está desabilitado.
+      {jaEnviouProva && !isFechada && (
+        <Alert severity="success" icon={<TaskAltIcon />} sx={{ mb: 3, borderRadius: 2 }}>
+          Sua resposta para esta função da prova já foi enviada. Uma nova submissão não é permitida.
         </Alert>
       )}
 
@@ -320,18 +330,10 @@ export default function CodeSubmissionPage() {
                 size="small"
                 variant="outlined"
               />
-              {funcProg?.melhorNota !== undefined && (
-                <Chip
-                  label={`Melhor nota: ${funcProg.melhorNota.toFixed(1)} / ${pontosMax.toFixed(1)} pts`}
-                  size="small"
-                  color={funcProg.melhorNota >= pontosMax ? 'success' : 'primary'}
-                  variant="outlined"
-                />
-              )}
             </Box>
 
             {/* Casos de Teste (respeitando casos ocultos) */}
-            {atividade?.tipo === 'exercicio' && (
+            {!isProva && (
               <>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -447,7 +449,7 @@ export default function CodeSubmissionPage() {
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Implementação da Função {funcao?.nomeFuncao}()
+              Implementação da Função {funcao?.nome || funcao?.nomeFuncao}()
             </Typography>
             <Typography variant="caption" color="text.secondary">
               Escreva apenas a função requisitada em C
@@ -460,7 +462,7 @@ export default function CodeSubmissionPage() {
               value={codigo}
               onChange={(e) => setCodigo(e.target.value)}
               onPaste={handlePaste}
-              disabled={isEntregue || isFechada}
+              disabled={isFechada || jaEnviouProva}
               spellCheck={false}
               sx={{
                 width: '100%',
@@ -475,7 +477,7 @@ export default function CodeSubmissionPage() {
                 color: '#CDD6F4',
                 resize: 'vertical',
                 tabSize: 4,
-                opacity: isEntregue || isFechada ? 0.7 : 1,
+                opacity: isFechada || jaEnviouProva ? 0.7 : 1,
               }}
             />
           </Card>
@@ -488,16 +490,16 @@ export default function CodeSubmissionPage() {
               size="large"
               startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
               onClick={handleSubmit}
-              disabled={submitting || !codigo.trim() || isFechada || isEntregue}
+              disabled={submitting || !codigo.trim() || isFechada || jaEnviouProva}
               sx={{ flex: 1, py: 1.3 }}
             >
-              {submitting ? 'Avaliando no Judge0...' : 'Enviar Tentativa'}
+              {submitting ? 'Avaliando no Judge0...' : jaEnviouProva ? 'Prova já enviada' : 'Enviar Tentativa'}
             </Button>
             <Button
               variant="text"
               startIcon={<RestartAltIcon />}
               onClick={handleClear}
-              disabled={submitting || isEntregue || isFechada}
+              disabled={submitting || isFechada || jaEnviouProva}
             >
               Restaurar Template
             </Button>
@@ -520,7 +522,7 @@ export default function CodeSubmissionPage() {
               </CardContent>
             </Card>
           ) : resultado ? (
-            atividade?.tipo === 'prova' && !atividade?.notasLiberadas ? (
+            isProva && !isFechada ? (
               <Card>
                 <CardContent sx={{ py: 6, textAlign: 'center' }}>
                   <Alert severity="success" variant="outlined" sx={{ mb: 2, justifyContent: 'center' }}>

@@ -24,6 +24,7 @@ import {
   Typography,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
+import { getTurmas } from '../../turmas/api';
 
 const STATUS_OPTIONS = [
   { value: 'rascunho', label: 'Rascunho' },
@@ -32,6 +33,7 @@ const STATUS_OPTIONS = [
 ];
 
 const INITIAL_STATE = {
+  turmaUuid: '',
   titulo: '',
   descricao: '',
   pontuacaoMaxima: 100,
@@ -45,12 +47,22 @@ const INITIAL_STATE = {
 
 export default function ActivityForm({ open, onClose, onSave, initialData }) {
   const [form, setForm] = useState(INITIAL_STATE);
+  const [turmas, setTurmas] = useState([]);
+  const [loadingTurmas, setLoadingTurmas] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
+      // Carregar turmas
+      setLoadingTurmas(true);
+      getTurmas()
+        .then((data) => setTurmas(Array.isArray(data) ? data : []))
+        .catch(() => setTurmas([]))
+        .finally(() => setLoadingTurmas(false));
+
       if (initialData) {
         setForm({
+          turmaUuid: initialData.turmaUuid || initialData.turma_uuid || '',
           titulo: initialData.titulo || '',
           descricao: initialData.descricao || '',
           pontuacaoMaxima: initialData.pontuacaoMaxima || 100,
@@ -76,6 +88,7 @@ export default function ActivityForm({ open, onClose, onSave, initialData }) {
     setSaving(true);
     try {
       const payload = {
+        turmaUuid: form.turmaUuid,
         titulo: form.titulo,
         descricao: form.descricao || null,
         pontuacaoMaxima: Number(form.pontuacaoMaxima),
@@ -112,13 +125,36 @@ export default function ActivityForm({ open, onClose, onSave, initialData }) {
       <DialogContent dividers>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
           <TextField
+            id="activity-turma"
+            label="Turma Destino"
+            select
+            value={form.turmaUuid}
+            onChange={handleChange('turmaUuid')}
+            required
+            fullWidth
+            helperText={
+              loadingTurmas
+                ? 'Carregando turmas...'
+                : turmas.length === 0
+                ? 'Nenhuma turma cadastrada. Crie uma turma primeiro.'
+                : 'Apenas os alunos matriculados nesta turma terão acesso à atividade'
+            }
+          >
+            {turmas.map((t) => (
+              <MenuItem key={t.uuid} value={t.uuid}>
+                {t.nome} ({t.totalAlunos || t.total_alunos || 0} alunos)
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
             id="activity-titulo"
-            label="Título"
+            label="Título da Atividade"
             value={form.titulo}
             onChange={handleChange('titulo')}
             required
             fullWidth
-            autoFocus
+            autoFocus={!isEdit}
           />
           <TextField
             id="activity-descricao"
@@ -230,7 +266,7 @@ export default function ActivityForm({ open, onClose, onSave, initialData }) {
         <Button
           type="submit"
           variant="contained"
-          disabled={saving || !form.titulo.trim()}
+          disabled={saving || !form.titulo.trim() || !form.turmaUuid}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
         >
           {saving ? 'Salvando...' : 'Salvar'}

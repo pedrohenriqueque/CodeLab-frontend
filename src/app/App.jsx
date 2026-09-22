@@ -14,6 +14,7 @@ import ProtectedRoute from '../shared/components/ProtectedRoute';
 
 // Auth & Public
 import LoginPage from '../features/auth/pages/LoginPage';
+import AdminTeachersPage from '../features/auth/pages/AdminTeachersPage';
 import LandingPage from '../features/landing/pages/LandingPage';
 
 // Professor
@@ -21,8 +22,13 @@ import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
+import EditActivityPage from '../features/atividades/pages/EditActivityPage';
 import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
+import MinhasTurmasPage from '../features/turmas/pages/MinhasTurmasPage';
+import { TurmaProvider } from '../features/turmas/context/TurmaContext';
+import RequireTurma from '../features/turmas/components/RequireTurma';
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
+import ProfessorSubmissionDetailPage from '../features/submissoes/pages/ProfessorSubmissionDetailPage';
 import AlunosPage from '../features/dashboard/pages/AlunosPage';
 import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
 import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
@@ -40,8 +46,8 @@ import StudentHistoryPage from '../features/atividades/pages/StudentHistoryPage'
 function HomeRedirect() {
   const { user, isProfessor } = useAuth();
   if (!user) return <LandingPage />;
-  if (isProfessor) return <Navigate to="/dashboard" replace />;
-  return <Navigate to="/aluno/dashboard" replace />;
+  if (String(user.perfil || user.tipo || '').toUpperCase() === 'ADMIN') return <Navigate to="/admin/professores" replace />;
+  return <Navigate to="/turmas" replace />;
 }
 
 function SubmissoesDispatcher() {
@@ -61,11 +67,15 @@ function AppRoutes() {
       {/* Login público */}
       <Route path="/login" element={<LoginPage />} />
 
+      <Route path="/turmas" element={<ProtectedRoute><MinhasTurmasPage /></ProtectedRoute>} />
+
+      <Route path="admin/professores" element={<ProtectedRoute allowedRoles={['admin']}><AdminTeachersPage /></ProtectedRoute>} />
+
       {/* Rotas protegidas com Layout */}
       <Route
         element={
           <ProtectedRoute>
-            <Layout />
+            <RequireTurma><Layout /></RequireTurma>
           </ProtectedRoute>
         }
       >
@@ -73,6 +83,7 @@ function AppRoutes() {
         <Route path="app" element={<HomeRedirect />} />
 
         {/* ===== PROFESSOR ===== */}
+        <Route path="atividades/:uuid/editar" element={<ProtectedRoute allowedRoles={['professor']}><EditActivityPage /></ProtectedRoute>} />
         <Route
           path="dashboard"
           element={
@@ -131,6 +142,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route path="submissoes/:uuid" element={<ProtectedRoute allowedRoles={['professor']}><ProfessorSubmissionDetailPage /></ProtectedRoute>} />
         <Route
           path="alunos"
           element={
@@ -243,7 +255,9 @@ export default function App() {
       <AuthProvider>
         <SnackbarProvider>
           <BrowserRouter>
-            <AppRoutes />
+            <TurmaProvider>
+              <AppRoutes />
+            </TurmaProvider>
           </BrowserRouter>
         </SnackbarProvider>
       </AuthProvider>

@@ -29,7 +29,7 @@ import StatsCards from '../components/StatsCards';
 import ActivityTable from '../components/ActivityTable';
 
 export default function ActivityListPage() {
-  const { atividades, loading, error, refetch } = useAtividades();
+  const { atividades, loading, error } = useAtividades();
   const [statusFilter, setStatusFilter] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -106,9 +106,9 @@ export default function ActivityListPage() {
           size="small"
         >
           <ToggleButton value="todos">Todos</ToggleButton>
-          <ToggleButton value="rascunho">Rascunho</ToggleButton>
-          <ToggleButton value="publicado">Publicado</ToggleButton>
-          <ToggleButton value="fechado">Fechado</ToggleButton>
+          <ToggleButton value="RASCUNHO">Rascunho</ToggleButton>
+          <ToggleButton value="PUBLICADA">Publicado</ToggleButton>
+          <ToggleButton value="ENCERRADA">Encerrada</ToggleButton>
         </ToggleButtonGroup>
 
         <TextField
@@ -147,16 +147,7 @@ export default function ActivityListPage() {
         <ActivityTable
           atividades={filteredAtividades}
           onView={(uuid) => navigate(`/atividades/${uuid}`)}
-          onEdit={(uuid) => navigate(`/atividades/${uuid}`)}
-        />
-      )}
-
-      {/* Dialog criar atividade (mantido como fallback) */}
-      {false && (
-        <ActivityForm
-          open={formOpen}
-          onClose={() => setFormOpen(false)}
-          onSave={handleCreateAtividade}
+          onEdit={(uuid) => navigate(`/atividades/${uuid}/editar`)}
         />
       )}
     </Box>

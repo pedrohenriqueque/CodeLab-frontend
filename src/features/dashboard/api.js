@@ -1,13 +1,13 @@
 import httpClient from '../../shared/api/httpClient';
 
 export const dashboardApi = {
-  getEstatisticas: async () => {
-    const { data } = await httpClient.get('/api/dashboard/estatisticas');
+  getEstatisticas: async (turmaUuid) => {
+    const { data } = await httpClient.get(`/api/turmas/${turmaUuid}/dashboard/professor`);
     return data;
   },
 
-  getDashboardAluno: async () => {
-    const { data } = await httpClient.get('/api/dashboard/aluno');
+  getDashboardAluno: async (turmaUuid) => {
+    const { data } = await httpClient.get(`/api/turmas/${turmaUuid}/dashboard/aluno`);
     return data;
   },
 };

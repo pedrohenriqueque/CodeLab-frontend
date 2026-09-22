@@ -38,12 +38,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const { login, register, isAuthenticated, isProfessor } = useAuth();
+  const { login, register, isAuthenticated, isProfessor, user } = useAuth();
   const { showSuccess } = useSnackbar();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from?.pathname || (isProfessor ? '/dashboard' : '/aluno/atividades');
+  const currentProfile = String(user?.perfil || user?.tipo || '').toUpperCase();
+  const from = currentProfile === 'ADMIN' ? '/admin/professores' : '/turmas';
 
   // Redireciona caso já esteja autenticado
   useEffect(() => {
@@ -75,8 +76,9 @@ export default function LoginPage() {
     try {
       const user = await login(email, senha);
       showSuccess(`Bem-vindo de volta, ${user.nome}!`);
-      const target = user.tipo === 'professor' ? '/dashboard' : '/aluno/atividades';
-      navigate(location.state?.from?.pathname || target, { replace: true });
+      const perfil = user.perfil?.toUpperCase();
+      const target = perfil === 'ADMIN' ? '/admin/professores' : '/turmas';
+      navigate(target, { replace: true });
     } catch (err) {
       setError(err.message || 'Erro ao realizar login. Verifique suas credenciais.');
     } finally {
@@ -90,7 +92,7 @@ export default function LoginPage() {
     try {
       const user = await register(formData);
       showSuccess(`Conta criada com sucesso! Seja bem-vindo, ${user.nome}!`);
-      navigate('/aluno/atividades', { replace: true });
+      navigate('/turmas', { replace: true });
     } catch (err) {
       setError(err.message || 'Erro ao criar conta. Tente novamente.');
     } finally {

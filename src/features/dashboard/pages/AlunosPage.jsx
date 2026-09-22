@@ -1,186 +1,175 @@
-import React, { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Avatar,
-  Chip,
-  TextField,
-  InputAdornment,
-  Grid,
+  Alert, Avatar, Box, Button, Card, Dialog, DialogActions, DialogContent,
+  DialogTitle, IconButton, InputAdornment, Skeleton, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Grid,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import PersonRemoveOutlinedIcon from '@mui/icons-material/PersonRemoveOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 
-const MOCK_ALUNOS = [
-  { id: 1, nome: 'Ana Beatriz Souza', email: 'ana.souza@universidade.edu.br', matricula: '20240101', concluidas: 8, total: 8, media: 9.2, status: 'Excelente' },
-  { id: 2, nome: 'Carlos Eduardo Lima', email: 'carlos.lima@universidade.edu.br', matricula: '20240102', concluidas: 7, total: 8, media: 7.8, status: 'Ativo' },
-  { id: 3, nome: 'Diego Santos Pereira', email: 'diego.santos@universidade.edu.br', matricula: '20240103', concluidas: 6, total: 8, media: 6.5, status: 'Ativo' },
-  { id: 4, nome: 'Fernanda Oliveira Rocha', email: 'fernanda.rocha@universidade.edu.br', matricula: '20240104', concluidas: 8, total: 8, media: 8.9, status: 'Excelente' },
-  { id: 5, nome: 'Gabriel Martins Costa', email: 'gabriel.costa@universidade.edu.br', matricula: '20240105', concluidas: 5, total: 8, media: 5.4, status: 'Atenção' },
-  { id: 6, nome: 'Isabela Ferreira Ramos', email: 'isabela.ramos@universidade.edu.br', matricula: '20240106', concluidas: 7, total: 8, media: 8.1, status: 'Ativo' },
-  { id: 7, nome: 'Lucas Silva Mendes', email: 'lucas.mendes@universidade.edu.br', matricula: '20240107', concluidas: 8, total: 8, media: 9.5, status: 'Excelente' },
-  { id: 8, nome: 'Mariana Castro Dias', email: 'mariana.dias@universidade.edu.br', matricula: '20240108', concluidas: 4, total: 8, media: 4.8, status: 'Atenção' },
-];
+import { getAlunosTurma, removerAlunoTurma } from '../../turmas/api';
+import { useTurmaContext } from '../../turmas/context/TurmaContext';
+import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
-function getInitials(name) {
-  const parts = name.split(' ');
-  return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+function getInitials(nome) {
+  const partes = nome.trim().split(/\s+/);
+  return partes.length > 1
+    ? `${partes[0][0]}${partes.at(-1)[0]}`.toUpperCase()
+    : nome.slice(0, 2).toUpperCase();
 }
 
 export default function AlunosPage() {
+  const { turmaAtiva } = useTurmaContext();
+  const { showSuccess, showError } = useSnackbar();
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [alunoParaRemover, setAlunoParaRemover] = useState(null);
+  const [removendo, setRemovendo] = useState(false);
 
-  const filtered = MOCK_ALUNOS.filter(
-    (a) =>
-      a.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.matricula.includes(searchTerm)
-  );
+  useEffect(() => {
+    let ativo = true;
+    async function carregarAlunos() {
+      if (!turmaAtiva?.uuid) {
+        if (ativo) {
+          setAlunos([]);
+          setLoading(false);
+        }
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const dados = await getAlunosTurma(turmaAtiva.uuid);
+        if (ativo) setAlunos(Array.isArray(dados) ? dados : []);
+      } catch (requestError) {
+        if (ativo) {
+          setAlunos([]);
+          setError(requestError.response?.data?.erro || 'Não foi possível carregar os alunos da turma.');
+        }
+      } finally {
+        if (ativo) setLoading(false);
+      }
+    }
+    carregarAlunos();
+    return () => { ativo = false; };
+  }, [turmaAtiva]);
+
+  const alunosFiltrados = useMemo(() => {
+    const termo = searchTerm.trim().toLocaleLowerCase('pt-BR');
+    if (!termo) return alunos;
+    return alunos.filter((aluno) => (
+      aluno.nome.toLocaleLowerCase('pt-BR').includes(termo) ||
+      aluno.matricula.toLocaleLowerCase('pt-BR').includes(termo)
+    ));
+  }, [alunos, searchTerm]);
+  const medias = alunos.map((aluno) => aluno.mediaNota).filter((nota) => nota != null);
+  const mediaTurma = medias.length ? medias.reduce((total, nota) => total + Number(nota), 0) / medias.length : null;
+  const entregas = alunos.reduce((total, aluno) => total + aluno.atividadesEnviadas, 0);
+  const atividades = alunos.reduce((total, aluno) => total + aluno.totalAtividades, 0);
+
+  const confirmarRemocao = async () => {
+    if (!turmaAtiva?.uuid || !alunoParaRemover) return;
+    setRemovendo(true);
+    try {
+      await removerAlunoTurma(turmaAtiva.uuid, alunoParaRemover.uuid);
+      setAlunos((atuais) => atuais.filter((aluno) => aluno.uuid !== alunoParaRemover.uuid));
+      showSuccess('Aluno removido da turma.');
+      setAlunoParaRemover(null);
+    } catch (requestError) {
+      showError(requestError.response?.data?.erro || 'Não foi possível remover o aluno da turma.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
+
+  if (!turmaAtiva) {
+    return <Alert severity="info">Selecione uma turma para consultar os alunos matriculados.</Alert>;
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {/* Header */}
       <Box>
-        <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.02em' }}>
-          Alunos
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-          Acompanhamento e desempenho dos estudantes matriculados
-        </Typography>
+        <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.02em' }}>Alunos</Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>Alunos matriculados em {turmaAtiva.nome}.</Typography>
       </Box>
 
-      {/* Metric Cards */}
       <Grid container spacing={2}>
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <PeopleAltOutlinedIcon />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>32</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Total de Alunos</Typography>
-              </Box>
+              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PeopleAltOutlinedIcon /></Box>
+              <Box><Typography variant="h5" sx={{ fontWeight: 800 }}>{alunos.length}</Typography><Typography variant="caption" sx={{ color: 'text.secondary' }}>Total de alunos</Typography></Box>
             </Box>
           </Card>
         </Grid>
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#ECFDF5', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircleIcon />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>91.4%</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Taxa de Entrega</Typography>
-              </Box>
+              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#ECFDF5', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircleIcon /></Box>
+              <Box><Typography variant="h5" sx={{ fontWeight: 800 }}>{atividades ? `${Math.round((entregas / atividades) * 100)}%` : '—'}</Typography><Typography variant="caption" sx={{ color: 'text.secondary' }}>Taxa de entrega</Typography></Box>
             </Box>
           </Card>
         </Grid>
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#FEF3C7', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TrendingUpIcon />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>7.4</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Média das Notas</Typography>
-              </Box>
+              <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#FEF3C7', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrendingUpIcon /></Box>
+              <Box><Typography variant="h5" sx={{ fontWeight: 800 }}>{mediaTurma == null ? '—' : mediaTurma.toFixed(1)}</Typography><Typography variant="caption" sx={{ color: 'text.secondary' }}>Média das notas</Typography></Box>
             </Box>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Table Card */}
       <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
         <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Lista da Turma (CC - Algoritmos I)
-          </Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Lista da turma</Typography>
           <TextField
             size="small"
-            placeholder="Buscar por aluno, email ou matrícula..."
+            placeholder="Buscar por aluno ou matrícula..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(event) => setSearchTerm(event.target.value)}
             sx={{ minWidth: 280 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-                </InputAdornment>
-              ),
-            }}
+            slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment> } }}
           />
         </Box>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow sx={{ bgcolor: 'background.default' }}>
-                <TableCell sx={{ fontWeight: 600 }}>Aluno</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Matrícula</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Atividades Entregues</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Média</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Situação</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.map((aluno) => (
-                <TableRow key={aluno.id} hover>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar sx={{ width: 34, height: 34, bgcolor: '#4F46E5', fontSize: '0.8rem', fontWeight: 600 }}>
-                        {getInitials(aluno.nome)}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{aluno.nome}</Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>{aluno.email}</Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                      {aluno.matricula}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {aluno.concluidas} / {aluno.total}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: aluno.media >= 7 ? '#10B981' : (aluno.media >= 5 ? '#F59E0B' : '#EF4444') }}>
-                      {aluno.media.toFixed(1)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={aluno.status}
-                      size="small"
-                      sx={{
-                        fontWeight: 600,
-                        fontSize: '0.75rem',
-                        bgcolor: aluno.status === 'Excelente' ? '#ECFDF5' : (aluno.status === 'Ativo' ? '#EEF2FF' : '#FEF2F2'),
-                        color: aluno.status === 'Excelente' ? '#059669' : (aluno.status === 'Ativo' ? '#4F46E5' : '#DC2626'),
-                      }}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+
+        {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+
+        {loading ? (
+          <Box sx={{ p: 2.5 }}>{[1, 2, 3].map((item) => <Skeleton key={item} variant="rounded" height={48} sx={{ mb: 1 }} />)}</Box>
+        ) : alunosFiltrados.length === 0 ? (
+          <Alert severity="info" sx={{ m: 2.5 }}>{alunos.length === 0 ? 'Nenhum aluno está matriculado nesta turma.' : 'Nenhum aluno encontrado.'}</Alert>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead><TableRow sx={{ bgcolor: 'background.default' }}><TableCell sx={{ fontWeight: 600 }}>Aluno</TableCell><TableCell sx={{ fontWeight: 600 }}>Matrícula</TableCell><TableCell sx={{ fontWeight: 600 }}>Atividades enviadas</TableCell><TableCell sx={{ fontWeight: 600 }}>Média</TableCell><TableCell sx={{ fontWeight: 600 }}>Situação</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>Ações</TableCell></TableRow></TableHead>
+              <TableBody>
+                {alunosFiltrados.map((aluno) => (
+                  <TableRow key={aluno.uuid} hover>
+                    <TableCell><Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}><Avatar sx={{ width: 34, height: 34, bgcolor: '#4F46E5', fontSize: '0.8rem', fontWeight: 600 }}>{getInitials(aluno.nome)}</Avatar><Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{aluno.nome}</Typography><Typography variant="caption" color="text.secondary">{aluno.email}</Typography></Box></Box></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{aluno.matricula}</Typography></TableCell>
+                    <TableCell>{aluno.atividadesEnviadas} / {aluno.totalAtividades}</TableCell>
+                    <TableCell>{aluno.mediaNota == null ? '—' : Number(aluno.mediaNota).toFixed(1)}</TableCell>
+                    <TableCell><Typography variant="body2">{aluno.situacao}</Typography></TableCell>
+                    <TableCell align="right"><Tooltip title="Remover da turma"><IconButton color="error" onClick={() => setAlunoParaRemover(aluno)} aria-label={`Remover ${aluno.nome} da turma`}><PersonRemoveOutlinedIcon /></IconButton></Tooltip></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Card>
+
+      <Dialog open={Boolean(alunoParaRemover)} onClose={() => !removendo && setAlunoParaRemover(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Remover aluno da turma?</DialogTitle>
+        <DialogContent><Typography>{alunoParaRemover ? `Remover ${alunoParaRemover.nome} desta turma?` : ''}</Typography></DialogContent>
+        <DialogActions><Button onClick={() => setAlunoParaRemover(null)} disabled={removendo}>Cancelar</Button><Button color="error" variant="contained" onClick={confirmarRemocao} disabled={removendo}>{removendo ? 'Removendo...' : 'Remover'}</Button></DialogActions>
+      </Dialog>
     </Box>
   );
 }

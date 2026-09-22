@@ -11,16 +11,19 @@ import ProtectedRoute from '../shared/components/ProtectedRoute';
 
 // Auth
 import LoginPage from '../features/auth/pages/LoginPage';
+import AdminTeachersPage from '../features/auth/pages/AdminTeachersPage';
 
 // Professor — Atividades
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
+import EditActivityPage from '../features/atividades/pages/EditActivityPage';
 import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
 
 
 // Professor — Submissões
 import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage';
+import ProfessorSubmissionDetailPage from '../features/submissoes/pages/ProfessorSubmissionDetailPage';
 import AlunosPage from '../features/dashboard/pages/AlunosPage';
 import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
 import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
@@ -41,7 +44,8 @@ import SandboxPage from '../features/sandbox/pages/SandboxPage';
 function HomeRedirect() {
   try {
     const user = JSON.parse(localStorage.getItem('codelab_user') || '{}');
-    if (user.tipo === 'professor') {
+    if (user.perfil === 'ADMIN') return <Navigate to="/admin/professores" replace />;
+    if (user.perfil === 'PROFESSOR') {
       return <Navigate to="/dashboard" replace />;
     }
     return <Navigate to="/aluno/dashboard" replace />;
@@ -55,6 +59,11 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+
+  {
+    path: '/admin/professores',
+    element: <ProtectedRoute allowedRoles={['admin']}><AdminTeachersPage /></ProtectedRoute>,
   },
 
   // Rotas protegidas dentro do Layout
@@ -93,7 +102,7 @@ const router = createBrowserRouter([
         path: 'atividades/:uuid/editar',
         element: (
           <ProtectedRoute allowedRoles={['professor']}>
-            <CreateActivityWizard />
+            <EditActivityPage />
           </ProtectedRoute>
         ),
       },
@@ -137,6 +146,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      { path: 'submissoes/:uuid', element: (<ProtectedRoute allowedRoles={['professor']}><ProfessorSubmissionDetailPage /></ProtectedRoute>) },
       {
         path: 'alunos',
         element: (

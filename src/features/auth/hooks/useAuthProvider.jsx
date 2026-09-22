@@ -17,7 +17,8 @@ export function AuthProvider({ children }) {
       const savedUser = localStorage.getItem('codelab_user');
       const savedToken = localStorage.getItem('codelab_token');
       if (savedUser && savedToken) {
-        setUser(JSON.parse(savedUser));
+        const restored = JSON.parse(savedUser);
+        setUser({ ...restored, perfil: restored.perfil || restored.tipo?.toUpperCase() });
       }
     } catch {
       localStorage.removeItem('codelab_user');
@@ -51,8 +52,8 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     isAuthenticated: !!user,
-    isProfessor: user?.tipo === 'professor',
-    isAluno: user?.tipo === 'aluno',
+    isProfessor: user?.perfil === 'PROFESSOR',
+    isAluno: user?.perfil === 'ALUNO',
     loading,
     login,
     register,

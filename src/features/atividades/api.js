@@ -6,33 +6,73 @@
 
 import httpClient from '../../shared/api/httpClient';
 
+function adaptAtividade(atividade) {
+  return {
+    ...atividade,
+    // Mantém compatibilidade visual com os componentes existentes.
+    dataAbertura: atividade.inicioEm,
+    dataFechamento: atividade.fimEm,
+  };
+}
+
 // ============================================================
 // ATIVIDADES
 // ============================================================
 
-export async function getAtividades() {
+export async function getAtividades(turmaUuid) {
+  const atividades = await getAtividadesResumo(turmaUuid);
+  return Promise.all(atividades.map(async (atividade) => ({
+    ...atividade,
+    funcoes: await getFuncoesAtividade(atividade.uuid),
+  })));
+}
+
+export async function getAtividadesResumo(turmaUuid) {
   const { data } = await httpClient.get('/api/atividades');
-  return data;
+  const atividades = turmaUuid ? data.filter((atividade) => atividade.turmaUuid === turmaUuid) : data;
+  return atividades.map(adaptAtividade);
 }
 
 export async function getAtividade(uuid) {
   const { data } = await httpClient.get(`/api/atividades/${uuid}`);
-  return data;
+  return adaptAtividade(data);
+}
+
+export async function getFuncoesAtividade(atividadeUuid) {
+  const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/funcoes`);
+  return data.map((funcao) => ({
+    ...funcao,
+    nomeFuncao: funcao.nome,
+    descricao: funcao.enunciado,
+    peso: Number(funcao.notaMaxima),
+    casosTeste: (funcao.casosTeste || []).map((caso, index) => ({
+      ...caso,
+      numero: index + 1,
+      inputs: caso.entradas,
+      outputEsperado: caso.retornoEsperado,
+      oculto: caso.visibilidade === 'OCULTO',
+    })),
+  }));
 }
 
 export async function createAtividade(body) {
   const { data } = await httpClient.post('/api/atividades', body);
-  return data;
+  return adaptAtividade(data);
 }
 
 export async function updateAtividade(uuid, body) {
   const { data } = await httpClient.patch(`/api/atividades/${uuid}`, body);
+  return adaptAtividade(data);
+}
+
+export async function publicarAtividade(atividadeUuid) {
+  const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/publicar`);
   return data;
 }
 
-export async function entregarAtividade(atividadeUuid) {
-  const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/entregar`);
-  return data;
+export async function encerrarAtividade(atividadeUuid) {
+  const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/encerrar`);
+  return adaptAtividade(data);
 }
 
 // ============================================================
@@ -117,4 +157,9 @@ export async function getProgressoAluno(alunoUuid) {
     params: { alunoUuid },
   });
   return data;
+}
+
+export async function getProgressoAtividade(atividadeUuid) {
+  const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/progresso`);
+  return data.funcoes || [];
 }
