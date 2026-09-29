@@ -10,7 +10,7 @@ export default function useActivityProgress(activityUuid) {
       setProgresso(funcoes.map((funcao) => ({
         ...funcao,
         funcaoUuid: funcao.funcaoAtividadeUuid,
-        tentativasUsadas: funcao.enviada ? 1 : 0,
+        tentativasUsadas: funcao.totalTentativas != null ? Number(funcao.totalTentativas) : (funcao.enviada ? 1 : 0),
         melhorNota: funcao.melhorNota == null ? null : Number(funcao.melhorNota),
       })));
     }

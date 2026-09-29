@@ -38,21 +38,26 @@ export async function getAtividade(uuid) {
   return adaptAtividade(data);
 }
 
-export async function getFuncoesAtividade(atividadeUuid) {
-  const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/funcoes`);
-  return data.map((funcao) => ({
-    ...funcao,
-    nomeFuncao: funcao.nome,
-    descricao: funcao.enunciado,
-    peso: Number(funcao.notaMaxima),
-    casosTeste: (funcao.casosTeste || []).map((caso, index) => ({
-      ...caso,
-      numero: index + 1,
-      inputs: caso.entradas,
-      outputEsperado: caso.retornoEsperado,
-      oculto: caso.visibilidade === 'OCULTO',
-    })),
-  }));
+import { adaptCasoTeste } from '../funcoes/api';
+export { adaptCasoTeste };
+
+export async function getFuncoesAtividade(atividadeUuid, options = {}) {
+  const params = {};
+  if (options.visiveisApenas) {
+    params.visiveis_apenas = true;
+  }
+  const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/funcoes`, { params });
+  return (Array.isArray(data) ? data : []).map((funcao) => {
+    const rawCases = funcao.casosTeste || funcao.casos_teste || [];
+    return {
+      ...funcao,
+      funcaoUuid: funcao.uuid,
+      nomeFuncao: funcao.nome || funcao.nomeFuncao || funcao.nome_funcao,
+      descricao: funcao.enunciado || funcao.descricao,
+      peso: Number(funcao.notaMaxima ?? funcao.nota_maxima ?? 0),
+      casosTeste: rawCases.map(adaptCasoTeste),
+    };
+  });
 }
 
 export async function createAtividade(body) {
@@ -73,6 +78,10 @@ export async function publicarAtividade(atividadeUuid) {
 export async function encerrarAtividade(atividadeUuid) {
   const { data } = await httpClient.post(`/api/atividades/${atividadeUuid}/encerrar`);
   return adaptAtividade(data);
+}
+
+export async function deleteAtividade(atividadeUuid) {
+  await httpClient.delete(`/api/atividades/${atividadeUuid}`);
 }
 
 // ============================================================
@@ -129,22 +138,29 @@ export async function removerFuncaoAtividade(atividadeUuid, funcaoUuid) {
 // ============================================================
 
 export async function getCasosTeste(funcaoUuid) {
-  const { data } = await httpClient.get(`/api/funcoes/${funcaoUuid}/casos-teste`);
-  return data;
+  const { data } = await httpClient.get(`/api/funcoes/${funcaoUuid}/casos`);
+  return (Array.isArray(data) ? data : []).map(adaptCasoTeste);
 }
 
 export async function createCasosTeste(funcaoUuid, body) {
-  const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos-teste`, body);
-  return data;
+  const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos`, body);
+  return adaptCasoTeste(data);
 }
 
-export async function updateCasoTeste(funcaoUuid, casoUuid, body) {
-  const { data } = await httpClient.put(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`, body);
-  return data;
+export async function updateCasoTeste(funcaoUuidOrCasoUuid, maybeCasoUuidOrBody, maybeBody) {
+  let casoUuid = funcaoUuidOrCasoUuid;
+  let body = maybeCasoUuidOrBody;
+  if (maybeBody !== undefined) {
+    casoUuid = maybeCasoUuidOrBody;
+    body = maybeBody;
+  }
+  const { data } = await httpClient.patch(`/api/casos/${casoUuid}`, body);
+  return adaptCasoTeste(data);
 }
 
-export async function deleteCasoTeste(funcaoUuid, casoUuid) {
-  await httpClient.delete(`/api/funcoes/${funcaoUuid}/casos-teste/${casoUuid}`);
+export async function deleteCasoTeste(funcaoUuidOrCasoUuid, maybeCasoUuid) {
+  const casoUuid = maybeCasoUuid || funcaoUuidOrCasoUuid;
+  await httpClient.delete(`/api/casos/${casoUuid}`);
 }
 
 

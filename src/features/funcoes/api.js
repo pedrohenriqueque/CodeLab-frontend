@@ -33,21 +33,49 @@ export async function duplicarFuncao(uuid) {
   return data;
 }
 
+export function adaptCasoTeste(caso, index = 0) {
+  if (!caso) return null;
+  const isOculto = caso.visibilidade !== undefined
+    ? String(caso.visibilidade).toUpperCase() === 'OCULTO'
+    : Boolean(caso.oculto);
+  const visibilidade = isOculto ? 'OCULTO' : 'VISIVEL';
+  const rawEntradas = caso.entradas ?? caso.inputs ?? [];
+  const rawSaida = caso.retornoEsperado ?? caso.retorno_esperado ?? caso.outputEsperado ?? caso.output_esperado;
+
+  return {
+    ...caso,
+    uuid: caso.uuid || caso.casoTesteUuid || caso.caso_teste_uuid || '',
+    casoTesteUuid: caso.uuid || caso.casoTesteUuid || caso.caso_teste_uuid || '',
+    numero: caso.numero ?? (index + 1),
+    entradas: rawEntradas,
+    inputs: rawEntradas,
+    retornoEsperado: rawSaida,
+    outputEsperado: rawSaida,
+    visibilidade,
+    oculto: isOculto,
+    visible: !isOculto,
+    peso: Number(caso.peso ?? caso.pesoCaso ?? 1),
+    pesoCaso: Number(caso.peso ?? caso.pesoCaso ?? 1),
+    descricao: caso.descricao || '',
+  };
+}
+
 export async function getCasosTeste(funcaoUuid) {
   const { data } = await httpClient.get(`/api/funcoes/${funcaoUuid}/casos`);
-  return data;
+  return (Array.isArray(data) ? data : []).map(adaptCasoTeste);
 }
 
 export async function createCasosTeste(funcaoUuid, body) {
   const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos`, body);
-  return data;
+  return adaptCasoTeste(data);
 }
 
 export async function updateCasoTeste(casoUuid, body) {
   const { data } = await httpClient.patch(`/api/casos/${casoUuid}`, body);
-  return data;
+  return adaptCasoTeste(data);
 }
 
 export async function deleteCasoTeste(casoUuid) {
   await httpClient.delete(`/api/casos/${casoUuid}`);
 }
+

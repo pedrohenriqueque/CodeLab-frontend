@@ -22,7 +22,6 @@ import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
-import EditActivityPage from '../features/atividades/pages/EditActivityPage';
 import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
 import MinhasTurmasPage from '../features/turmas/pages/MinhasTurmasPage';
 import { TurmaProvider } from '../features/turmas/context/TurmaContext';
@@ -44,7 +43,7 @@ import StudentSubmissionDetailPage from '../features/submissoes/pages/StudentSub
 import StudentHistoryPage from '../features/atividades/pages/StudentHistoryPage';
 
 function HomeRedirect() {
-  const { user, isProfessor } = useAuth();
+  const { user } = useAuth();
   if (!user) return <LandingPage />;
   if (String(user.perfil || user.tipo || '').toUpperCase() === 'ADMIN') return <Navigate to="/admin/professores" replace />;
   return <Navigate to="/turmas" replace />;
@@ -83,7 +82,7 @@ function AppRoutes() {
         <Route path="app" element={<HomeRedirect />} />
 
         {/* ===== PROFESSOR ===== */}
-        <Route path="atividades/:uuid/editar" element={<ProtectedRoute allowedRoles={['professor']}><EditActivityPage /></ProtectedRoute>} />
+        <Route path="atividades/:uuid/editar" element={<ProtectedRoute allowedRoles={['professor']}><CreateActivityWizard /></ProtectedRoute>} />
         <Route
           path="dashboard"
           element={
@@ -122,6 +121,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={['professor']}>
               <ActivityDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="atividades/:uuid/submissoes"
+          element={
+            <ProtectedRoute allowedRoles={['professor']}>
+              <SubmissionListPage />
             </ProtectedRoute>
           }
         />

@@ -42,6 +42,7 @@ import {
   createCasosTeste,
   updateCasoTeste,
   deleteCasoTeste,
+  adaptCasoTeste,
 } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { useAuth } from '../../auth/hooks/useAuthProvider';
@@ -54,6 +55,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
   const [formInputs, setFormInputs] = useState({});
   const [formOutput, setFormOutput] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
+  const [formPeso, setFormPeso] = useState('1.00');
   const [formOculto, setFormOculto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -69,7 +71,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
     setLoading(true);
     try {
       const data = await getCasosTeste(funcao.uuid);
-      setCasos(Array.isArray(data) ? data : []);
+      setCasos(Array.isArray(data) ? data.map(adaptCasoTeste) : []);
     } catch {
       showError('Erro ao carregar casos de teste da função');
       setCasos([]);
@@ -94,6 +96,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
     setFormInputs(initInputs);
     setFormOutput('');
     setFormDescricao('');
+    setFormPeso('1.00');
     setFormOculto(false);
     setEditingCaso(null);
     setFormOpen(true);
@@ -109,12 +112,19 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
     const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
     setFormOutput(outVal);
     setFormDescricao(caso.descricao || '');
-    setFormOculto(caso.visibilidade === 'OCULTO');
+    setFormPeso(Number(caso.peso ?? 1).toFixed(2));
+    setFormOculto(caso.oculto || caso.visibilidade === 'OCULTO');
     setEditingCaso(caso);
     setFormOpen(true);
   };
 
   const handleSaveCaso = async () => {
+    const peso = Number(formPeso);
+    if (!Number.isFinite(peso) || peso <= 0) {
+      showError('Informe um peso maior que zero.');
+      return;
+    }
+
     setSaving(true);
     try {
       const parsedInputs = {};
@@ -145,6 +155,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
         entradas: parametros.map((p) => parsedInputs[p.nome]),
         retornoEsperado: parsedOut,
         visibilidade: formOculto ? 'OCULTO' : 'VISIVEL',
+        peso,
       };
 
       if (editingCaso?.uuid) {
@@ -226,8 +237,8 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                 ))}
               </Box>
 
-              {/* Saída esperada e Descrição */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1.5 }}>
+              {/* Saída esperada, peso e descrição */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 0.7fr 2fr', gap: 1.5 }}>
                 <TextField
                   label="Saída Esperada (retorno)"
                   value={formOutput}
@@ -236,6 +247,18 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                   required
                   fullWidth
                   placeholder="Ex: 120"
+                  sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+                <TextField
+                  label="Peso relativo"
+                  type="number"
+                  value={formPeso}
+                  onChange={(e) => setFormPeso(e.target.value)}
+                  size="small"
+                  required
+                  fullWidth
+                  inputProps={{ min: 0.01, max: 999999.99, step: 0.01 }}
+                  helperText="Usado proporcionalmente na nota da função"
                   sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 />
                 <TextField
@@ -309,6 +332,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
               <TableHead sx={{ backgroundColor: '#F8FAFC' }}>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700, width: 60 }}>#</TableCell>
+                  <TableCell sx={{ fontWeight: 700, width: 100 }}>Peso</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Entradas</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Saída Esperada</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 115 }}>Visibilidade</TableCell>
@@ -329,6 +353,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                       <TableCell>
                         <Chip label={caso.numero || idx + 1} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                       </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{Number(caso.peso ?? 1).toFixed(2)}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                         {inputStr}
                       </TableCell>
@@ -336,7 +361,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                         {outVal}
                       </TableCell>
                       <TableCell>
-                        {caso.oculto ? (
+                        {(caso.oculto || caso.visibilidade === 'OCULTO') ? (
                           <Chip
                             icon={<VisibilityOffOutlinedIcon sx={{ fontSize: '14px !important' }} />}
                             label="Oculto"

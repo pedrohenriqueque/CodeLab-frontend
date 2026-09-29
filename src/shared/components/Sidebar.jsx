@@ -63,7 +63,6 @@ export const MENU_ALUNO = [
   { label: 'Início', icon: <HomeOutlinedIcon />, path: '/aluno/dashboard' },
   { label: 'Atividades', icon: <AssignmentOutlinedIcon />, path: '/aluno/atividades' },
   { label: 'Histórico', icon: <HistoryOutlinedIcon />, path: '/aluno/historico' },
-  { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/aluno/submissoes' },
   { label: 'Playground', icon: <TerminalOutlinedIcon />, path: '/aluno/sandbox' },
   { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];
@@ -111,6 +110,9 @@ export default function Sidebar({ open, onClose }) {
     }
     if (itemPath === '/aluno/dashboard') {
       return current === '/aluno/dashboard' || current === '/';
+    }
+    if (itemPath === '/aluno/historico') {
+      return current.startsWith('/aluno/historico') || current.startsWith('/aluno/submissoes');
     }
     if (itemPath === '/submissoes') {
       return current.includes('/submissoes');

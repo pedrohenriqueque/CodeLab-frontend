@@ -17,7 +17,6 @@ import {
   Button,
   TextField,
   Card,
-  CardContent,
   IconButton,
   CircularProgress,
   Alert,
@@ -51,13 +50,14 @@ import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import {
   createAtividade,
   getAtividade,
+  getFuncoesAtividade,
   updateAtividade,
   associarFuncaoAtividade,
   atualizarFuncaoAtividade,
   removerFuncaoAtividade,
   publicarAtividade,
 } from "../api";
-import { getBibliotecaFuncoes, getCasosTeste } from "../../funcoes/api";
+import { getBibliotecaFuncoes, getCasosTeste, adaptCasoTeste } from "../../funcoes/api";
 import { useSnackbar } from "../../../shared/hooks/useSnackbar";
 import { useTurmaContext } from "../../turmas/context/TurmaContext";
 
@@ -152,8 +152,12 @@ export default function CreateActivityWizard() {
       if (uuid) {
         setLoadingInitial(true);
         try {
-          const ativ = await getAtividade(uuid);
+          const [ativ, ativFuncoes] = await Promise.all([
+            getAtividade(uuid),
+            getFuncoesAtividade(uuid).catch(() => []),
+          ]);
           if (ativ) {
+            ativ.funcoes = ativFuncoes || [];
             setInfo({
               title: ativ.titulo || "",
               description: ativ.descricao || "",
@@ -174,13 +178,13 @@ export default function CreateActivityWizard() {
             const mappedSelected = await Promise.all(
               (ativ.funcoes || []).map(async (f) => {
                 const fUuid = f.funcaoUuid || f.uuid;
-                const libFn = lib.find((item) => item.uuid === fUuid) || f;
-                let canonicalCases = libFn.casosTeste || libFn.casos_teste || [];
+                const libFn = lib.find((item) => item.uuid === fUuid || item.nome === (f.nome || f.nomeFuncao) || item.nomeFuncao === (f.nome || f.nomeFuncao)) || f;
+                let canonicalCases = libFn.casosTeste || libFn.casos_teste || f.casosTeste || f.casos_teste || [];
 
                 // Se a função na lib não veio com os casos, busca da API
-                if (!canonicalCases || canonicalCases.length === 0) {
+                if ((!canonicalCases || canonicalCases.length === 0) && libFn.uuid) {
                   try {
-                    const fetchedCases = await getCasosTeste(fUuid);
+                    const fetchedCases = await getCasosTeste(libFn.uuid);
                     if (Array.isArray(fetchedCases) && fetchedCases.length > 0) {
                       canonicalCases = fetchedCases;
                     }
@@ -198,37 +202,45 @@ export default function CreateActivityWizard() {
                 const visibilityMap = new Map();
                 assignedCases.forEach((c) => {
                   const cId = c.casoTesteUuid || c.caso_teste_uuid || c.uuid;
-                  visibilityMap.set(cId, !c.oculto);
+                  const isVis = c.visibilidade
+                    ? c.visibilidade.toUpperCase() === "VISIVEL"
+                    : (c.oculto !== undefined ? !c.oculto : true);
+                  visibilityMap.set(cId, isVis);
                 });
 
                 // Monta casos combinando os canônicos da biblioteca com os vinculados
                 const baseList = canonicalCases.length > 0 ? canonicalCases : assignedCases;
-                const cases = baseList.map((tc, idx) => {
-                  const tcId = tc.uuid || tc.casoTesteUuid || tc.caso_teste_uuid;
+                const cases = baseList.map((rawTc, idx) => {
+                  const tc = adaptCasoTeste(rawTc, idx);
+                  const tcId = tc.uuid || tc.casoTesteUuid;
                   const isSelected = assignedUuids.size === 0 ? true : assignedUuids.has(tcId);
-                  const isVisible = visibilityMap.has(tcId) ? visibilityMap.get(tcId) : !tc.oculto;
+                  const tcVis = tc.visibilidade ? tc.visibilidade.toUpperCase() === "VISIVEL" : !tc.oculto;
+                  const isVisible = visibilityMap.has(tcId) ? visibilityMap.get(tcId) : tcVis;
 
                   return {
                     id: tcId,
                     numero: tc.numero || idx + 1,
-                    inputStr: typeof (tc.entradas ?? tc.inputs) === "object" ? JSON.stringify(tc.entradas ?? tc.inputs) : String(tc.entradas ?? tc.inputs ?? ""),
+                    inputStr: typeof tc.entradas === "object" ? JSON.stringify(tc.entradas) : String(tc.entradas ?? ""),
                     outputStr:
-                      typeof (tc.retornoEsperado ?? tc.outputEsperado) === "object" && (tc.retornoEsperado ?? tc.outputEsperado) !== null
-                        ? (tc.retornoEsperado ?? tc.outputEsperado)?.valor ?? JSON.stringify(tc.retornoEsperado ?? tc.outputEsperado)
-                        : String(tc.retornoEsperado ?? tc.outputEsperado ?? tc.output_esperado ?? ""),
+                      typeof tc.retornoEsperado === "object" && tc.retornoEsperado !== null
+                        ? (tc.retornoEsperado?.valor ?? JSON.stringify(tc.retornoEsperado))
+                        : String(tc.retornoEsperado ?? ""),
                     selected: isSelected,
                     visible: isVisible,
+                    visibilidade: isVisible ? "VISIVEL" : "OCULTO",
+                    oculto: !isVisible,
                   };
                 });
 
                 return {
-                  fnId: fUuid,
+                  fnId: libFn.uuid || fUuid,
+                  internalId: f.uuid,
                   name: f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao,
                   signature: `${f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao}()`,
                   description: f.descricao || libFn.enunciado || libFn.descricao || "",
                   difficulty: f.dificuldade || libFn.dificuldade || libFn.dificuldadePadrao || "medio",
                   defaultDifficulty: libFn.dificuldade || libFn.dificuldadePadrao || f.dificuldadePadrao || "medio",
-                  points: Number(f.notaMaxima) || 10,
+                  points: Number(f.notaMaxima || f.peso || 10),
                   cases,
                 };
               })
@@ -283,17 +295,27 @@ export default function CreateActivityWizard() {
       }
     }
 
-    const cases = (canonicalCases || []).map((tc, idx) => ({
-      id: tc.uuid || tc.casoTesteUuid || tc.caso_teste_uuid,
-      numero: tc.numero || idx + 1,
-      inputStr: typeof (tc.entradas ?? tc.inputs) === "object" ? JSON.stringify(tc.entradas ?? tc.inputs) : String(tc.entradas ?? tc.inputs ?? ""),
-      outputStr:
-        typeof (tc.retornoEsperado ?? tc.outputEsperado) === "object" && (tc.retornoEsperado ?? tc.outputEsperado) !== null
-          ? (tc.retornoEsperado ?? tc.outputEsperado)?.valor ?? JSON.stringify(tc.retornoEsperado ?? tc.outputEsperado)
-          : String(tc.retornoEsperado ?? tc.outputEsperado ?? tc.output_esperado ?? ""),
-      selected: true,
-      visible: idx < 2, // os 2 primeiros visíveis por padrão como no design
-    }));
+    const cases = (canonicalCases || []).map((rawTc, idx) => {
+      const tc = adaptCasoTeste(rawTc, idx);
+      // Consulta o verdadeiro estado do caso de teste cadastrado na biblioteca
+      const isVisible = tc.visibilidade
+        ? tc.visibilidade.toUpperCase() === "VISIVEL"
+        : (tc.oculto !== undefined ? !tc.oculto : true);
+
+      return {
+        id: tc.uuid || tc.casoTesteUuid,
+        numero: tc.numero || idx + 1,
+        inputStr: typeof tc.entradas === "object" ? JSON.stringify(tc.entradas) : String(tc.entradas ?? ""),
+        outputStr:
+          typeof tc.retornoEsperado === "object" && tc.retornoEsperado !== null
+            ? (tc.retornoEsperado?.valor ?? JSON.stringify(tc.retornoEsperado))
+            : String(tc.retornoEsperado ?? ""),
+        selected: true,
+        visible: isVisible,
+        visibilidade: isVisible ? "VISIVEL" : "OCULTO",
+        oculto: !isVisible,
+      };
+    });
 
     setSelected((prev) => [
       ...prev,
@@ -317,19 +339,6 @@ export default function CreateActivityWizard() {
 
   const updateFn = (fnId, patch) => {
     setSelected((prev) => prev.map((s) => (s.fnId === fnId ? { ...s, ...patch } : s)));
-  };
-
-  const updateCase = (fnId, caseId, patch) => {
-    setSelected((prev) =>
-      prev.map((s) =>
-        s.fnId === fnId
-          ? {
-              ...s,
-              cases: s.cases.map((c) => (c.id === caseId ? { ...c, ...patch } : c)),
-            }
-          : s
-      )
-    );
   };
 
   // Validação das etapas
@@ -408,7 +417,8 @@ export default function CreateActivityWizard() {
         // Atualiza atividade existente
         // O contrato de edição ainda não permite trocar o tipo da atividade.
         // As demais configurações continuam sendo atualizadas.
-        const { tipo, ...payloadEdicao } = payloadAtividade;
+        const payloadEdicao = { ...payloadAtividade };
+        delete payloadEdicao.tipo;
         await updateAtividade(uuid, payloadEdicao);
       } else {
         // Cria nova atividade
@@ -418,23 +428,24 @@ export default function CreateActivityWizard() {
 
       // Sincroniza funções e casos de teste
       // Se for edição, obtém estado atual para comparar adições, alterações e remoções
-      const currentRemote = await getAtividade(atividadeTargetUuid);
-      const remoteFns = currentRemote.funcoes || [];
-      const remoteIds = new Set(remoteFns.map((f) => f.funcaoUuid || f.uuid));
-      const localIds = new Set(selected.map((s) => s.fnId));
+      const remoteFns = (await getFuncoesAtividade(atividadeTargetUuid).catch(() => [])) || [];
+      const localNames = new Set(selected.map((s) => s.name));
+      const localInternalIds = new Set(selected.map((s) => s.internalId).filter(Boolean));
 
       // 1. Remover funções que foram desassociadas
       for (const rf of remoteFns) {
-        const fUuid = rf.funcaoUuid || rf.uuid;
-        if (!localIds.has(fUuid)) {
-          await removerFuncaoAtividade(atividadeTargetUuid, fUuid);
+        if (!localInternalIds.has(rf.uuid) && !localNames.has(rf.nome || rf.nomeFuncao)) {
+          await removerFuncaoAtividade(atividadeTargetUuid, rf.uuid);
         }
       }
 
       // 2. Associar novas ou atualizar existentes
       for (let i = 0; i < selected.length; i++) {
         const sf = selected[i];
-        if (!remoteIds.has(sf.fnId)) {
+        const matchingRemote = remoteFns.find(
+          (rf) => (sf.internalId && rf.uuid === sf.internalId) || (rf.nome || rf.nomeFuncao) === sf.name
+        );
+        if (!matchingRemote) {
           // Associar nova
           await associarFuncaoAtividade(atividadeTargetUuid, {
             funcaoUuid: sf.fnId,
@@ -443,10 +454,10 @@ export default function CreateActivityWizard() {
           });
         } else {
           // Atualizar existente
-          await atualizarFuncaoAtividade(atividadeTargetUuid, sf.fnId, {
+          await atualizarFuncaoAtividade(atividadeTargetUuid, matchingRemote.uuid, {
             dificuldade: String(sf.difficulty).toUpperCase(),
             notaMaxima: Number(sf.points),
-          });
+          }).catch(() => {});
         }
       }
 
@@ -754,7 +765,6 @@ export default function CreateActivityWizard() {
 
           {/* Cards das funções já selecionadas */}
           {selected.map((sf, idx) => {
-            const diffBadge = getDifficultyBadge(sf.difficulty);
             const isDiffChanged = sf.difficulty !== sf.defaultDifficulty;
 
             return (
@@ -988,8 +998,7 @@ export default function CreateActivityWizard() {
                       {sf.signature}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {chosenCount} caso{chosenCount !== 1 ? "s" : ""} copiado{chosenCount !== 1 ? "s" : ""} · {visibleCount} visíve
-                      {visibleCount !== 1 ? "is" : "l"}
+                      {chosenCount} caso{chosenCount !== 1 ? "s" : ""} copiado{chosenCount !== 1 ? "s" : ""} · {visibleCount} visíve{visibleCount !== 1 ? "is" : "l"} · {chosenCount - visibleCount} oculto{chosenCount - visibleCount !== 1 ? "s" : ""}
                     </Typography>
                   </Box>
 

@@ -1,5 +1,5 @@
 /**
- * CasosTesteTable — tabela editável de casos de teste por função.
+ * CasosTesteTable — tabela de casos de teste por função com gestão de visibilidade real.
  *
  * Props:
  *   funcaoUuid: string
@@ -29,26 +29,33 @@ import {
   Tooltip,
   CircularProgress,
   Alert,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SaveIcon from '@mui/icons-material/Save';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 
-import { getCasosTeste, createCasosTeste } from '../api';
+import { getCasosTeste, createCasosTeste, deleteCasoTeste, adaptCasoTeste } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 
-export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
+export default function CasosTesteTable({ funcaoUuid, parametros = [], onUpdate }) {
   const [casos, setCasos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const { showSuccess, showError } = useSnackbar();
 
   // Estado do formulário de novo caso
   const [novoCaso, setNovoCaso] = useState({
     inputs: {},
     outputEsperado: '',
+    peso: '1.00',
     descricao: '',
+    oculto: false,
   });
 
   const fetchCasos = useCallback(async () => {
@@ -56,9 +63,8 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
     setLoading(true);
     try {
       const data = await getCasosTeste(funcaoUuid);
-      setCasos(Array.isArray(data) ? data : [data]);
+      setCasos(Array.isArray(data) ? data.map(adaptCasoTeste) : []);
     } catch {
-      // silêncio — pode não ter casos ainda
       setCasos([]);
     } finally {
       setLoading(false);
@@ -70,12 +76,11 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
   }, [fetchCasos]);
 
   const openDialog = () => {
-    // Inicializa inputs com os nomes dos parâmetros
     const inputs = {};
     parametros.forEach((p) => {
       inputs[p.nome] = '';
     });
-    setNovoCaso({ inputs, outputEsperado: '', descricao: '' });
+    setNovoCaso({ inputs, outputEsperado: '', peso: '1.00', descricao: '', oculto: false });
     setDialogOpen(true);
   };
 
@@ -87,31 +92,60 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
   };
 
   const handleSave = async () => {
+    const peso = Number(novoCaso.peso);
+    if (!Number.isFinite(peso) || peso <= 0) {
+      showError('Informe um peso maior que zero.');
+      return;
+    }
+
     setSaving(true);
     try {
-      // Converter inputs para números quando possível
-      const parsedInputs = {};
-      Object.entries(novoCaso.inputs).forEach(([key, val]) => {
-        const num = Number(val);
-        parsedInputs[key] = isNaN(num) ? val : num;
+      const parsedInputs = parametros.map((p) => {
+        const val = novoCaso.inputs[p.nome];
+        if (p.tipo === 'int' || p.tipo === 'long') {
+          const n = parseInt(val, 10);
+          return isNaN(n) ? val : n;
+        }
+        if (p.tipo === 'float' || p.tipo === 'double') {
+          const n = parseFloat(val);
+          return isNaN(n) ? val : n;
+        }
+        return val;
       });
 
-      const outputNum = Number(novoCaso.outputEsperado);
-      const outputVal = isNaN(outputNum) ? novoCaso.outputEsperado : outputNum;
+      const numOut = Number(novoCaso.outputEsperado);
+      const parsedOut = isNaN(numOut) ? novoCaso.outputEsperado : numOut;
 
       await createCasosTeste(funcaoUuid, {
-        inputs: parsedInputs,
-        outputEsperado: { valor: outputVal },
-        descricao: novoCaso.descricao || null,
+        entradas: parsedInputs,
+        retornoEsperado: parsedOut,
+        visibilidade: novoCaso.oculto ? 'OCULTO' : 'VISIVEL',
+        peso,
+        descricao: novoCaso.descricao || '',
       });
 
       showSuccess('Caso de teste adicionado!');
       setDialogOpen(false);
-      fetchCasos();
+      await fetchCasos();
+      if (onUpdate) onUpdate();
     } catch (err) {
       showError(err.response?.data?.detail || 'Erro ao salvar caso de teste');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (casoUuid) => {
+    setDeletingId(casoUuid);
+    try {
+      await deleteCasoTeste(casoUuid);
+      showSuccess('Caso de teste removido!');
+      await fetchCasos();
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      showError(err.response?.data?.detail || 'Erro ao remover caso de teste');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -127,6 +161,7 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
           startIcon={<AddIcon />}
           onClick={openDialog}
           variant="outlined"
+          sx={{ textTransform: 'none', borderRadius: 2 }}
         >
           Adicionar Caso
         </Button>
@@ -143,86 +178,176 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
           <Table size="small">
-            <TableHead>
+            <TableHead sx={{ backgroundColor: '#F8FAFC' }}>
               <TableRow>
-                <TableCell>#</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 60 }}>#</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 80 }}>Peso</TableCell>
                 {parametros.map((p) => (
-                  <TableCell key={p.nome}>
+                  <TableCell key={p.nome} sx={{ fontWeight: 700 }}>
                     Entrada: <code>{p.nome}</code>
                   </TableCell>
                 ))}
-                <TableCell>Saída Esperada</TableCell>
-                <TableCell>Descrição</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Saída Esperada</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 120 }}>Visibilidade</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Descrição</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, width: 70 }}>Ações</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {casos.map((caso, idx) => (
-                <TableRow key={caso.uuid || idx}>
-                  <TableCell>
-                    <Chip label={caso.numero || idx + 1} size="small" variant="outlined" />
-                  </TableCell>
-                  {parametros.map((p) => (
-                    <TableCell key={p.nome}>
-                      <code>{JSON.stringify(caso.inputs?.[p.nome] ?? caso.inputs?.[p.nome])}</code>
+              {casos.map((caso, idx) => {
+                const isOculto = caso.oculto || caso.visibilidade === 'OCULTO';
+                const outVal = typeof caso.retornoEsperado === 'object' && caso.retornoEsperado !== null
+                  ? (caso.retornoEsperado?.valor ?? JSON.stringify(caso.retornoEsperado))
+                  : String(caso.retornoEsperado ?? caso.outputEsperado ?? '');
+
+                return (
+                  <TableRow key={caso.uuid || idx} hover>
+                    <TableCell>
+                      <Chip label={caso.numero || idx + 1} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
                     </TableCell>
-                  ))}
-                  <TableCell>
-                    <code>
-                      {typeof caso.outputEsperado === 'object'
-                        ? JSON.stringify(caso.outputEsperado?.valor ?? caso.outputEsperado)
-                        : caso.outputEsperado}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption" color="text.secondary">
-                      {caso.descricao || '—'}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell sx={{ fontWeight: 600 }}>{Number(caso.peso ?? 1).toFixed(2)}</TableCell>
+                    {parametros.map((p, pIdx) => {
+                      const val = Array.isArray(caso.entradas) ? caso.entradas[pIdx] : caso.inputs?.[p.nome];
+                      return (
+                        <TableCell key={p.nome} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                          <code>{val !== undefined ? JSON.stringify(val) : '—'}</code>
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 700, color: '#16A34A' }}>
+                      <code>{outVal}</code>
+                    </TableCell>
+                    <TableCell>
+                      {isOculto ? (
+                        <Chip
+                          icon={<VisibilityOffOutlinedIcon sx={{ fontSize: '14px !important' }} />}
+                          label="Oculto"
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            backgroundColor: '#F1F5F9',
+                            color: '#64748B',
+                            borderColor: '#CBD5E1',
+                          }}
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Chip
+                          icon={<VisibilityOutlinedIcon sx={{ fontSize: '14px !important' }} />}
+                          label="Visível"
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                          sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="caption" color="text.secondary">
+                        {caso.descricao || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Excluir Caso">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={deletingId === caso.uuid}
+                          onClick={() => handleDelete(caso.uuid)}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
       )}
 
       {/* Dialog para novo caso de teste */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 600 }}>Novo Caso de Teste</DialogTitle>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Novo Caso de Teste</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Campos de entrada por parâmetro */}
-            {parametros.map((p) => (
-              <TextField
-                key={p.nome}
-                label={`Entrada: ${p.nome} (${p.tipo})`}
-                value={novoCaso.inputs[p.nome] || ''}
-                onChange={handleInputChange(p.nome)}
-                fullWidth
-                placeholder={`Valor de ${p.nome}`}
-              />
-            ))}
+            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(parametros.length, 1), 3)}, 1fr)`, gap: 1.5 }}>
+              {parametros.map((p) => (
+                <TextField
+                  key={p.nome}
+                  label={`Entrada: ${p.nome} (${p.tipo})`}
+                  value={novoCaso.inputs[p.nome] || ''}
+                  onChange={handleInputChange(p.nome)}
+                  size="small"
+                  fullWidth
+                  placeholder={`Valor de ${p.nome}`}
+                />
+              ))}
+            </Box>
 
-            {/* Saída esperada */}
-            <TextField
-              label="Saída Esperada"
-              value={novoCaso.outputEsperado}
-              onChange={(e) => setNovoCaso((prev) => ({ ...prev, outputEsperado: e.target.value }))}
-              fullWidth
-              placeholder="Valor de retorno esperado"
-            />
+            {/* Saída esperada e peso */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 1.5 }}>
+              <TextField
+                label="Saída Esperada (retorno)"
+                value={novoCaso.outputEsperado}
+                onChange={(e) => setNovoCaso((prev) => ({ ...prev, outputEsperado: e.target.value }))}
+                size="small"
+                fullWidth
+                required
+                placeholder="Valor de retorno esperado"
+              />
+              <TextField
+                label="Peso relativo"
+                type="number"
+                value={novoCaso.peso}
+                onChange={(e) => setNovoCaso((prev) => ({ ...prev, peso: e.target.value }))}
+                size="small"
+                fullWidth
+                required
+                inputProps={{ min: 0.01, max: 9999.99, step: 0.01 }}
+              />
+            </Box>
 
             {/* Descrição */}
             <TextField
-              label="Descrição (opcional)"
+              label="Descrição do Cenário (opcional)"
               value={novoCaso.descricao}
               onChange={(e) => setNovoCaso((prev) => ({ ...prev, descricao: e.target.value }))}
+              size="small"
               fullWidth
-              placeholder="Ex: 5! = 120"
+              placeholder="Ex: Fatorial de zero (caso base)"
             />
+
+            {/* Visibilidade do caso */}
+            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={novoCaso.oculto}
+                    onChange={(e) => setNovoCaso((prev) => ({ ...prev, oculto: e.target.checked }))}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                      Caso de Teste Oculto
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Os alunos não verão as entradas nem a saída esperada nos resultados de submissão
+                    </Typography>
+                  </Box>
+                }
+                sx={{ m: 0 }}
+              />
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setDialogOpen(false)} disabled={saving}>
+          <Button onClick={() => setDialogOpen(false)} disabled={saving} sx={{ textTransform: 'none' }}>
             Cancelar
           </Button>
           <Button
@@ -230,8 +355,9 @@ export default function CasosTesteTable({ funcaoUuid, parametros = [] }) {
             variant="contained"
             disabled={saving || !novoCaso.outputEsperado}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            sx={{ textTransform: 'none', borderRadius: 2, fontWeight: 600 }}
           >
-            {saving ? 'Salvando...' : 'Salvar'}
+            {saving ? 'Salvando...' : 'Salvar Caso'}
           </Button>
         </DialogActions>
       </Dialog>

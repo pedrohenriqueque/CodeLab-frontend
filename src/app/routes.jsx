@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Definição de rotas da aplicação CodeLab.
  *
@@ -17,7 +18,6 @@ import AdminTeachersPage from '../features/auth/pages/AdminTeachersPage';
 import ActivityListPage from '../features/atividades/pages/ActivityListPage';
 import ActivityDetailPage from '../features/atividades/pages/ActivityDetailPage';
 import CreateActivityWizard from '../features/atividades/pages/CreateActivityWizard';
-import EditActivityPage from '../features/atividades/pages/EditActivityPage';
 import FunctionLibraryPage from '../features/funcoes/pages/FunctionLibraryPage';
 
 
@@ -41,17 +41,19 @@ import StudentHistoryPage from '../features/atividades/pages/StudentHistoryPage'
 import SandboxPage from '../features/sandbox/pages/SandboxPage';
 
 // Redirect baseado no role do usuário (lê do localStorage para funcionar fora do context)
-function HomeRedirect() {
+function getHomeRedirectPath() {
   try {
     const user = JSON.parse(localStorage.getItem('codelab_user') || '{}');
-    if (user.perfil === 'ADMIN') return <Navigate to="/admin/professores" replace />;
-    if (user.perfil === 'PROFESSOR') {
-      return <Navigate to="/dashboard" replace />;
-    }
-    return <Navigate to="/aluno/dashboard" replace />;
+    if (user.perfil === 'ADMIN') return '/admin/professores';
+    if (user.perfil === 'PROFESSOR') return '/dashboard';
+    return '/aluno/dashboard';
   } catch {
-    return <Navigate to="/aluno/dashboard" replace />;
+    return '/aluno/dashboard';
   }
+}
+
+function HomeRedirect() {
+  return <Navigate to={getHomeRedirectPath()} replace />;
 }
 
 const router = createBrowserRouter([
@@ -102,7 +104,7 @@ const router = createBrowserRouter([
         path: 'atividades/:uuid/editar',
         element: (
           <ProtectedRoute allowedRoles={['professor']}>
-            <EditActivityPage />
+            <CreateActivityWizard />
           </ProtectedRoute>
         ),
       },
@@ -127,6 +129,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={['professor']}>
             <ActivityDetailPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'atividades/:uuid/submissoes',
+        element: (
+          <ProtectedRoute allowedRoles={['professor']}>
+            <SubmissionListPage />
           </ProtectedRoute>
         ),
       },
