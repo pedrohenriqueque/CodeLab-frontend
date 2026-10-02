@@ -124,7 +124,6 @@ export default function CreateActivityWizard() {
   const [config, setConfig] = useState({
     allowMultiple: true,
     maxAttempts: "5",
-    testsVisible: false,
     bloquearPaste: false,
   });
 
@@ -157,6 +156,11 @@ export default function CreateActivityWizard() {
             getFuncoesAtividade(uuid).catch(() => []),
           ]);
           if (ativ) {
+            if (ativ.status === 'ENCERRADA') {
+              showError('Atividades encerradas não podem ser editadas.');
+              navigate(`/atividades/${uuid}`, { replace: true });
+              return;
+            }
             ativ.funcoes = ativFuncoes || [];
             setInfo({
               title: ativ.titulo || "",
@@ -170,7 +174,6 @@ export default function CreateActivityWizard() {
             setConfig({
               allowMultiple: ativ.duracaoMinutos === null || ativ.duracaoMinutos === undefined,
               maxAttempts: "5",
-              testsVisible: ativ.notasLiberadas || false,
               bloquearPaste: ativ.bloquearPaste || false,
             });
 
@@ -406,7 +409,7 @@ export default function CreateActivityWizard() {
         tipo: info.tipo === "prova" ? "PROVA" : "EXERCICIO",
         permitirMultiplasSubmissoes: info.tipo === "exercicio" && config.allowMultiple,
         maxTentativasPorFuncao: info.tipo === "exercicio" && config.allowMultiple ? Number(config.maxAttempts) : null,
-        mostrarOcultosAposFechamento: info.tipo === "exercicio" && config.testsVisible,
+        mostrarOcultosAposFechamento: false,
       };
 
       if (!uuid) payloadAtividade.turmaUuid = turmaAtiva.uuid;
@@ -719,7 +722,14 @@ export default function CreateActivityWizard() {
                   type="number"
                   inputProps={{ min: 1, max: 1000 }}
                   value={info.maxPoints}
-                  onChange={(e) => setInfo({ ...info, maxPoints: e.target.value })}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    let val = e.target.value;
+                    if (val.length > 1 && val.startsWith('0') && !val.startsWith('0.')) {
+                      val = val.replace(/^0+/, '') || '0';
+                    }
+                    setInfo({ ...info, maxPoints: val });
+                  }}
                   error={!!stepErrors.maxPoints}
                   helperText={stepErrors.maxPoints || "Nota total de referência para o cálculo proporcional"}
                   fullWidth
@@ -895,10 +905,20 @@ export default function CreateActivityWizard() {
                     <TextField
                       type="number"
                       inputProps={{ min: 0.5, step: 0.5 }}
-                      value={sf.points}
-                      onChange={(e) =>
-                        updateFn(sf.fnId, { points: parseFloat(e.target.value) || 0 })
-                      }
+                      value={sf.points ?? ""}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        if (val.length > 1 && val.startsWith('0') && !val.startsWith('0.')) {
+                          val = val.replace(/^0+/, '') || '0';
+                        }
+                        updateFn(sf.fnId, { points: val });
+                      }}
+                      onBlur={() => {
+                        if (sf.points !== "" && !isNaN(Number(sf.points))) {
+                          updateFn(sf.fnId, { points: Number(sf.points) });
+                        }
+                      }}
                       error={!!stepErrors[`pts_${sf.fnId}`]}
                       helperText={stepErrors[`pts_${sf.fnId}`]}
                       size="small"
@@ -1209,29 +1229,6 @@ export default function CreateActivityWizard() {
               </Box>
             )}
 
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                py: 2,
-                borderBottom: "1px solid #E2E8F0",
-              }}
-            >
-              <Box sx={{ pr: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1E293B" }}>
-                  Mostrar resultados dos testes ocultos após o fechamento
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Define se os resultados detalhados dos casos ocultos ficarão disponíveis depois da data de fechamento.
-                </Typography>
-              </Box>
-              <Switch
-                checked={config.testsVisible}
-                onChange={(e) => setConfig({ ...config, testsVisible: e.target.checked })}
-                color="primary"
-              />
-            </Box>
 
             </> : <Box sx={{ p: 2.5, borderRadius: 2, backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B", mb: 2 }}>Regras do trabalho avaliativo</Typography>
@@ -1337,7 +1334,7 @@ export default function CreateActivityWizard() {
                     <Typography variant="body2" sx={{ fontWeight: 600, color: "#0F172A", mt: 0.25 }}>
                       {info.tipo === "prova"
                         ? "Trabalho avaliativo · Uma entrega por função · Resultados ocultos para o aluno · Conclusão automática após o envio de todas as funções"
-                        : `Exercício de prática · ${config.allowMultiple ? `Múltiplas tentativas (máximo de ${config.maxAttempts} por função)` : "Uma tentativa por função"} · Resultados ocultos disponíveis após o fechamento: ${config.testsVisible ? "Sim" : "Não"}`}
+                        : `Exercício de prática · ${config.allowMultiple ? `Múltiplas tentativas (máximo de ${config.maxAttempts} por função)` : "Uma tentativa por função"}`}
                     </Typography>
                   </Box>
                   {info.description && (

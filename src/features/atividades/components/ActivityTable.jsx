@@ -550,38 +550,22 @@ export default function ActivityTable({
               </ListItemIcon>
               <ListItemText primary="Ver submissões" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
             </MenuItem>,
-            <Tooltip
-              key="edit-deadline"
-              title={selectedActivity?.status === 'ENCERRADA' ? 'Atividades encerradas não podem ter o prazo alterado' : ''}
-              placement="left"
-              disableHoverListener={selectedActivity?.status !== 'ENCERRADA'}
-            >
-              <span>
-                <MenuItem
-                  disabled={selectedActivity?.status === 'ENCERRADA'}
-                  onClick={() => {
-                    const atv = selectedActivity;
-                    handleCloseMenu();
-                    onEditDeadline?.(atv);
-                  }}
-                  sx={{
-                    fontSize: '0.8125rem',
-                    py: 1,
-                    color: selectedActivity?.status === 'ENCERRADA' ? 'text.disabled' : 'inherit',
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 30 }}>
-                    <CalendarTodayOutlinedIcon
-                      sx={{
-                        fontSize: 17,
-                        color: selectedActivity?.status === 'ENCERRADA' ? 'text.disabled' : 'text.secondary',
-                      }}
-                    />
-                  </ListItemIcon>
-                  <ListItemText primary="Editar prazo" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
-                </MenuItem>
-              </span>
-            </Tooltip>,
+            selectedActivity?.status !== 'ENCERRADA' && (
+              <MenuItem
+                key="edit-deadline"
+                onClick={() => {
+                  const atv = selectedActivity;
+                  handleCloseMenu();
+                  onEditDeadline?.(atv);
+                }}
+                sx={{ fontSize: '0.8125rem', py: 1 }}
+              >
+                <ListItemIcon sx={{ minWidth: 30 }}>
+                  <CalendarTodayOutlinedIcon sx={{ fontSize: 17, color: 'text.secondary' }} />
+                </ListItemIcon>
+                <ListItemText primary="Editar prazo" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
+              </MenuItem>
+            ),
             selectedActivity?.status === 'PUBLICADA' && (
               <MenuItem
                 key="close"

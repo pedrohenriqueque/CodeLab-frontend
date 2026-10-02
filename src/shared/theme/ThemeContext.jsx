@@ -1,4 +1,4 @@
-import { createContext, useState, useMemo, useEffect, useContext } from 'react';
+import { createContext, useMemo, useEffect, useContext } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import getTheme from './theme';
@@ -11,25 +11,24 @@ const ThemeModeContext = createContext({
 export const useThemeMode = () => useContext(ThemeModeContext);
 
 export function CustomThemeProvider({ children }) {
-  const [mode, setMode] = useState(() => {
-    return localStorage.getItem('themeMode') || 'light';
-  });
-
+  // Limpa qualquer preferência anterior de modo escuro gravada no navegador
   useEffect(() => {
-    localStorage.setItem('themeMode', mode);
-  }, [mode]);
+    try {
+      localStorage.removeItem('themeMode');
+    } catch {
+      // Ignora erro de acesso ao localStorage se restrito
+    }
+  }, []);
 
   const colorMode = useMemo(
     () => ({
-      mode,
-      toggleColorMode: () => {
-        setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
-      },
+      mode: 'light',
+      toggleColorMode: () => {},
     }),
-    [mode]
+    []
   );
 
-  const theme = useMemo(() => getTheme(mode), [mode]);
+  const theme = useMemo(() => getTheme('light'), []);
 
   return (
     <ThemeModeContext.Provider value={colorMode}>

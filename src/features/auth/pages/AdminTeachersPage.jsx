@@ -7,6 +7,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import httpClient from '../../../shared/api/httpClient';
 import { useAuth } from '../hooks/useAuthProvider';
+import LogoutConfirmDialog from '../../../shared/components/LogoutConfirmDialog';
 
 const PASSWORD_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 const generatePassword = () => {
@@ -19,11 +20,12 @@ const editForm = (teacher) => ({ nome: teacher.nome, email: teacher.email, senha
 
 export default function AdminTeachersPage() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [teachers, setTeachers] = useState([]);
   const [form, setForm] = useState(createForm);
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [deletingTeacher, setDeletingTeacher] = useState(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [error, setError] = useState('');
   const [generatedPassword, setGeneratedPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -52,10 +54,10 @@ export default function AdminTeachersPage() {
     catch (requestError) { setError(requestError.response?.data?.erro || 'Não foi possível excluir o professor.'); }
     finally { setIsSaving(false); }
   };
-  const exit = () => { logout(); navigate('/login', { replace: true }); };
+  const exit = () => { setShowLogoutConfirm(false); logout(); navigate('/login', { replace: true }); };
   const isNew = editingTeacher?.isNew;
   return <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}><Toolbar sx={{ maxWidth: 1200, width: '100%', mx: 'auto', px: { xs: 2, sm: 3 } }}><Typography variant="h6" sx={{ fontWeight: 800, flexGrow: 1 }}>CodeGrade · Administração</Typography><Button color="inherit" startIcon={<LogoutIcon />} onClick={exit}>Sair</Button></Toolbar></AppBar>
+    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}><Toolbar sx={{ maxWidth: 1200, width: '100%', mx: 'auto', px: { xs: 2, sm: 3 } }}><Typography variant="h6" sx={{ fontWeight: 800, flexGrow: 1 }}>CodeGrade · Administração</Typography><Button color="inherit" startIcon={<LogoutIcon />} onClick={() => setShowLogoutConfirm(true)}>Sair</Button></Toolbar></AppBar>
     <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, sm: 4 } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 2, mb: 3 }}><Box><Typography variant="h4">Professores</Typography><Typography color="text.secondary">{teachers.length} cadastrado(s)</Typography></Box><Button variant="contained" onClick={openCreate}>Novo professor</Button></Box>
       {generatedPassword && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setGeneratedPassword('')}>Professor cadastrado. Senha temporária: <strong>{generatedPassword}</strong>. Anote-a antes de fechar este aviso.</Alert>}
@@ -67,5 +69,10 @@ export default function AdminTeachersPage() {
     </Box>
     <Dialog open={Boolean(editingTeacher)} onClose={closeEditor} fullWidth maxWidth="xs"><Box component="form" onSubmit={save}><DialogTitle>{isNew ? 'Novo professor' : 'Editar professor'}</DialogTitle><DialogContent><Box sx={{ display: 'grid', gap: 2, pt: 1 }}>{error && <Alert severity="error">{error}</Alert>}<TextField label="Nome completo" value={form.nome} onChange={updateField('nome')} required autoFocus /><TextField label="E-mail institucional" type="email" value={form.email} onChange={updateField('email')} required /><Box><TextField label={isNew ? 'Senha temporária' : 'Nova senha (opcional)'} value={form.senha} onChange={updateField('senha')} required={isNew} inputProps={{ minLength: 8 }} fullWidth slotProps={isNew ? { input: { endAdornment: <IconButton aria-label="Gerar nova senha" onClick={() => setForm((previous) => ({ ...previous, senha: generatePassword() }))}><RefreshIcon /></IconButton> } } : undefined} /><Typography variant="caption" color="text.secondary">{isNew ? 'O professor poderá usar esta senha no primeiro acesso.' : 'Deixe em branco para manter a senha atual. Se preenchida, use ao menos 8 caracteres.'}</Typography></Box></Box></DialogContent><DialogActions><Button onClick={closeEditor} disabled={isSaving}>Cancelar</Button><Button type="submit" variant="contained" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar'}</Button></DialogActions></Box></Dialog>
     <Dialog open={Boolean(deletingTeacher)} onClose={() => !isSaving && setDeletingTeacher(null)} maxWidth="xs" fullWidth><DialogTitle>Excluir professor?</DialogTitle><DialogContent><Typography>“{deletingTeacher?.nome}” perderá o acesso ao sistema. O cadastro será preservado para auditoria.</Typography></DialogContent><DialogActions><Button onClick={() => setDeletingTeacher(null)} disabled={isSaving}>Cancelar</Button><Button color="error" variant="contained" onClick={deactivate} disabled={isSaving}>{isSaving ? 'Excluindo...' : 'Excluir'}</Button></DialogActions></Dialog>
+    <LogoutConfirmDialog
+      open={showLogoutConfirm}
+      onClose={() => setShowLogoutConfirm(false)}
+      onConfirm={exit}
+    />
   </Box>;
 }

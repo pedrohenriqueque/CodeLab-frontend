@@ -30,7 +30,6 @@ import SubmissionListPage from '../features/submissoes/pages/SubmissionListPage'
 import ProfessorSubmissionDetailPage from '../features/submissoes/pages/ProfessorSubmissionDetailPage';
 import AlunosPage from '../features/dashboard/pages/AlunosPage';
 import ResultadosPage from '../features/dashboard/pages/ResultadosPage';
-import ConfiguracoesPage from '../features/dashboard/pages/ConfiguracoesPage';
 
 // Aluno
 import StudentDashboardPage from '../features/dashboard/pages/StudentDashboardPage';
@@ -168,11 +167,7 @@ function AppRoutes() {
         />
         <Route
           path="configuracoes"
-          element={
-            <ProtectedRoute>
-              <ConfiguracoesPage />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/" replace />}
         />
 
         {/* ===== ALUNO ===== */}

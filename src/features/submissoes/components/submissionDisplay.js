@@ -1,6 +1,7 @@
 export const STATUS = {
   PROCESSANDO: { label: 'Aguardando correção', color: 'warning' },
   AVALIADA: { label: 'Avaliada', color: 'success' },
+  ENVIO_REGISTRADO: { label: 'Recebida', color: 'info' },
   ERRO_COMPILACAO: { label: 'Erro de compilação', color: 'error' },
   FALHA_TECNICA: { label: 'Falha técnica', color: 'error' },
   ASSINATURA_NAO_SUPORTADA: { label: 'Assinatura não suportada', color: 'error' },

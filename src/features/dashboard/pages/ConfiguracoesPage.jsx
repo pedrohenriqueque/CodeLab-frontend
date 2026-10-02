@@ -12,18 +12,10 @@ import {
   TextField,
   Grid,
 } from '@mui/material';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined';
-import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined';
-import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
-
 import { useAuth } from '../../auth/hooks/useAuthProvider';
-import { useThemeMode } from '../../../shared/theme/ThemeContext';
 
 export default function ConfiguracoesPage() {
   const { user, isProfessor } = useAuth();
-  const { mode, toggleColorMode } = useThemeMode();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 900 }}>
@@ -68,24 +60,7 @@ export default function ConfiguracoesPage() {
         </Grid>
       </Card>
 
-      {/* Appearance & Preferences */}
-      <Card sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-          Aparência e Interface
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {mode === 'dark' ? <DarkModeIcon sx={{ color: '#4F46E5' }} /> : <LightModeIcon sx={{ color: '#F59E0B' }} />}
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>Modo Escuro</Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Alterne entre o tema claro e escuro para maior conforto visual
-              </Typography>
-            </Box>
-          </Box>
-          <Switch checked={mode === 'dark'} onChange={toggleColorMode} color="primary" />
-        </Box>
-      </Card>
+
 
       {/* Notifications */}
       <Card sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>

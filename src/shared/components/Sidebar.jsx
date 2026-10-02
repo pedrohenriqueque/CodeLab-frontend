@@ -23,6 +23,7 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Divider,
   useMediaQuery,
   useTheme,
   Tooltip,
@@ -34,18 +35,15 @@ import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import PeopleOutlineRoundedIcon from '@mui/icons-material/PeopleOutlineRounded';
 import BarChartRoundedIcon from '@mui/icons-material/BarChartRounded';
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import TerminalOutlinedIcon from '@mui/icons-material/TerminalOutlined';
 import FunctionsOutlinedIcon from '@mui/icons-material/FunctionsOutlined';
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
 import KeyboardDoubleArrowLeftRoundedIcon from '@mui/icons-material/KeyboardDoubleArrowLeftRounded';
 import LogoutIcon from '@mui/icons-material/Logout';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
 
 import { useAuth } from '../../features/auth/hooks/useAuthProvider';
-import { useThemeMode } from '../theme/ThemeContext';
 import TurmaSelector from '../../features/turmas/components/TurmaSelector';
+import LogoutConfirmDialog from './LogoutConfirmDialog';
 
 export const DRAWER_WIDTH = 250;
 
@@ -56,7 +54,6 @@ export const MENU_PROFESSOR = [
   { label: 'Submissões', icon: <FactCheckOutlinedIcon />, path: '/submissoes' },
   { label: 'Alunos', icon: <PeopleOutlineRoundedIcon />, path: '/alunos' },
   { label: 'Resultados', icon: <BarChartRoundedIcon />, path: '/resultados' },
-  { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];
 
 export const MENU_ALUNO = [
@@ -64,12 +61,10 @@ export const MENU_ALUNO = [
   { label: 'Atividades', icon: <AssignmentOutlinedIcon />, path: '/aluno/atividades' },
   { label: 'Histórico', icon: <HistoryOutlinedIcon />, path: '/aluno/historico' },
   { label: 'Playground', icon: <TerminalOutlinedIcon />, path: '/aluno/sandbox' },
-  { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];
 
 export const MENU_ADMIN = [
   { label: 'Professores', icon: <PeopleOutlineRoundedIcon />, path: '/admin/professores' },
-  { label: 'Configurações', icon: <SettingsOutlinedIcon />, path: '/configuracoes' },
 ];
 
 function getInitials(name) {
@@ -86,11 +81,11 @@ export default function Sidebar({ open, onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
-  const { mode, toggleColorMode } = useThemeMode();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, isProfessor, logout } = useAuth();
 
   const [anchorEl, setAnchorEl] = useState(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const isAdmin = user?.perfil === 'ADMIN';
   const menuItems = isAdmin ? MENU_ADMIN : (isProfessor ? MENU_PROFESSOR : MENU_ALUNO);
@@ -98,9 +93,15 @@ export default function Sidebar({ open, onClose }) {
   const handleMenuOpen = (e) => setAnchorEl(e.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
 
-  const handleLogout = () => {
+  const handleLogoutClick = () => {
     handleMenuClose();
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = () => {
+    setShowLogoutConfirm(false);
     logout();
+    navigate('/login');
   };
 
   const isItemActive = (itemPath) => {
@@ -240,27 +241,23 @@ export default function Sidebar({ open, onClose }) {
                 color: active
                   ? '#4F46E5'
                   : 'text.secondary',
-                backgroundColor: active
-                  ? (mode === 'light' ? '#EEF2FF' : 'rgba(79, 70, 229, 0.18)')
-                  : 'transparent',
+                backgroundColor: active ? '#EEF2FF' : 'transparent',
                 transition: 'all 0.15s ease',
                 '&:hover': {
-                  backgroundColor: active
-                    ? (mode === 'light' ? '#E0E7FF' : 'rgba(79, 70, 229, 0.25)')
-                    : (mode === 'light' ? '#F8FAFC' : 'rgba(255, 255, 255, 0.05)'),
+                  backgroundColor: active ? '#E0E7FF' : '#F8FAFC',
                   color: active ? '#4338CA' : 'text.primary',
                   '& .MuiListItemIcon-root': {
                     color: active ? '#4338CA' : '#4F46E5',
                   },
                 },
                 '&.Mui-selected': {
-                  backgroundColor: mode === 'light' ? '#EEF2FF' : 'rgba(79, 70, 229, 0.18)',
+                  backgroundColor: '#EEF2FF',
                   color: '#4F46E5',
                   '& .MuiListItemIcon-root': {
                     color: '#4F46E5',
                   },
                   '&:hover': {
-                    backgroundColor: mode === 'light' ? '#E0E7FF' : 'rgba(79, 70, 229, 0.25)',
+                    backgroundColor: '#E0E7FF',
                   },
                 },
               }}
@@ -307,7 +304,7 @@ export default function Sidebar({ open, onClose }) {
             cursor: 'pointer',
             transition: 'background-color 0.15s ease',
             '&:hover': {
-              backgroundColor: mode === 'light' ? '#F8FAFC' : 'rgba(255, 255, 255, 0.05)',
+              backgroundColor: '#F8FAFC',
             },
           }}
         >
@@ -379,35 +376,20 @@ export default function Sidebar({ open, onClose }) {
               {user?.email || 'usuario@universidade.edu.br'}
             </Typography>
           </Box>
-          <MenuItem
-            onClick={() => {
-              toggleColorMode();
-              handleMenuClose();
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </ListItemIcon>
-            <ListItemText primary={mode === 'dark' ? 'Modo Claro' : 'Modo Escuro'} />
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              handleMenuClose();
-              navigate('/configuracoes');
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}>
-              <SettingsOutlinedIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Configurações" />
-          </MenuItem>
-          <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
+          <Divider sx={{ my: 0.5 }} />
+          <MenuItem onClick={handleLogoutClick} sx={{ color: 'error.main' }}>
             <ListItemIcon sx={{ minWidth: 32, color: 'error.main' }}>
               <LogoutIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText primary="Sair da conta" />
           </MenuItem>
         </Menu>
+
+        <LogoutConfirmDialog
+          open={showLogoutConfirm}
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleConfirmLogout}
+        />
       </Box>
     </Box>
   );

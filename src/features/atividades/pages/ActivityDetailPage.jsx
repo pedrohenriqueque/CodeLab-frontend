@@ -91,7 +91,6 @@ export default function ActivityDetailPage() {
   // Diálogo: Editar Prazo
   const [editDeadlineOpen, setEditDeadlineOpen] = useState(false);
   const [newDeadlineDate, setNewDeadlineDate] = useState('');
-  const [newDeadlineTime, setNewDeadlineTime] = useState('23:59');
   const [savingDeadline, setSavingDeadline] = useState(false);
 
   // Diálogo: Encerrar Atividade
@@ -150,31 +149,42 @@ export default function ActivityDetailPage() {
 
   // Abre diálogo de edição de prazo com valores existentes
   const handleOpenEditDeadline = () => {
+    if (isEncerrada || atividade?.status === 'ENCERRADA') {
+      showError('Atividades encerradas não podem ter o prazo alterado.');
+      return;
+    }
     if (atividade?.fimEm || atividade?.dataFechamento) {
       const dateObj = new Date(atividade.fimEm || atividade.dataFechamento);
       if (!isNaN(dateObj.getTime())) {
         const yyyy = dateObj.getFullYear();
         const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
         const dd = String(dateObj.getDate()).padStart(2, '0');
-        const hh = String(dateObj.getHours()).padStart(2, '0');
-        const min = String(dateObj.getMinutes()).padStart(2, '0');
         setNewDeadlineDate(`${yyyy}-${mm}-${dd}`);
-        setNewDeadlineTime(`${hh}:${min}`);
+      } else {
+        setNewDeadlineDate('');
       }
+    } else {
+      setNewDeadlineDate('');
     }
     setEditDeadlineOpen(true);
   };
 
-  // Salva novo prazo
+  // Salva novo prazo (apenas dia, encerrando no final do dia às 23:59:59)
   const handleSaveDeadline = async () => {
+    if (isEncerrada || atividade?.status === 'ENCERRADA') {
+      showError('Atividades encerradas não podem ter o prazo alterado.');
+      setEditDeadlineOpen(false);
+      return;
+    }
     if (!newDeadlineDate) {
       showError('Informe uma data válida.');
       return;
     }
     setSavingDeadline(true);
     try {
-      const isoString = new Date(`${newDeadlineDate}T${newDeadlineTime || '23:59'}:00`).toISOString();
-      await updateAtividade(uuid, { fimEm: isoString });
+      const [ano, mes, dia] = newDeadlineDate.split('-').map(Number);
+      const dataLimite = new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+      await updateAtividade(uuid, { fimEm: dataLimite.toISOString() });
       showSuccess('Prazo de encerramento atualizado com sucesso.');
       setEditDeadlineOpen(false);
       await refetch();
@@ -505,28 +515,30 @@ export default function ActivityDetailPage() {
             </Button>
 
             {/* Botão Editar Prazo */}
-            <Button
-              variant="outlined"
-              startIcon={<CalendarTodayOutlinedIcon sx={{ fontSize: 16 }} />}
-              onClick={handleOpenEditDeadline}
-              sx={{
-                borderColor: '#BFDBFE',
-                color: '#2563EB',
-                borderRadius: 2,
-                px: 2,
-                py: 0.85,
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.8125rem',
-                whiteSpace: 'nowrap',
-                '&:hover': {
-                  borderColor: '#2563EB',
-                  bgcolor: alpha('#2563EB', 0.05),
-                },
-              }}
-            >
-              Editar prazo
-            </Button>
+            {!isEncerrada && (
+              <Button
+                variant="outlined"
+                startIcon={<CalendarTodayOutlinedIcon sx={{ fontSize: 16 }} />}
+                onClick={handleOpenEditDeadline}
+                sx={{
+                  borderColor: '#BFDBFE',
+                  color: '#2563EB',
+                  borderRadius: 2,
+                  px: 2,
+                  py: 0.85,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    borderColor: '#2563EB',
+                    bgcolor: alpha('#2563EB', 0.05),
+                  },
+                }}
+              >
+                Editar prazo
+              </Button>
+            )}
 
             {/* Botão Encerrar Atividade */}
             <Button
@@ -1170,18 +1182,20 @@ export default function ActivityDetailPage() {
           </ListItemIcon>
           <ListItemText primary="Ver submissões" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
         </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setMenuAnchor(null);
-            handleOpenEditDeadline();
-          }}
-          sx={{ fontSize: '0.8125rem', py: 1 }}
-        >
-          <ListItemIcon sx={{ minWidth: 30 }}>
-            <CalendarTodayOutlinedIcon sx={{ fontSize: 17, color: 'text.secondary' }} />
-          </ListItemIcon>
-          <ListItemText primary="Editar prazo" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
-        </MenuItem>
+        {!isEncerrada && (
+          <MenuItem
+            onClick={() => {
+              setMenuAnchor(null);
+              handleOpenEditDeadline();
+            }}
+            sx={{ fontSize: '0.8125rem', py: 1 }}
+          >
+            <ListItemIcon sx={{ minWidth: 30 }}>
+              <CalendarTodayOutlinedIcon sx={{ fontSize: 17, color: 'text.secondary' }} />
+            </ListItemIcon>
+            <ListItemText primary="Editar prazo" primaryTypographyProps={{ fontSize: '0.8125rem' }} />
+          </MenuItem>
+        )}
         <Divider sx={{ my: 0.5 }} />
         <Tooltip
           title={
@@ -1237,7 +1251,7 @@ export default function ActivityDetailPage() {
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ fontSize: '0.875rem', mb: 2.5 }}>
-            Defina uma nova data e hora limite para que os alunos entreguem soluções nesta atividade.
+            Defina a nova data limite para entrega de soluções nesta atividade.
           </DialogContentText>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
@@ -1245,15 +1259,6 @@ export default function ActivityDetailPage() {
               label="Data de encerramento"
               value={newDeadlineDate}
               onChange={(e) => setNewDeadlineDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-              size="small"
-            />
-            <TextField
-              type="time"
-              label="Hora de encerramento"
-              value={newDeadlineTime}
-              onChange={(e) => setNewDeadlineTime(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
               size="small"

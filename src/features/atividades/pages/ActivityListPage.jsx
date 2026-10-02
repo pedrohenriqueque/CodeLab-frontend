@@ -86,7 +86,7 @@ export default function ActivityListPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Ordenação
-  const [sortField, setSortField] = useState('titulo');
+  const [sortField, setSortField] = useState('periodo');
   const [sortDirection, setSortDirection] = useState('asc');
 
   // Estado para modal de exclusão
@@ -102,7 +102,6 @@ export default function ActivityListPage() {
   // Estado para modal de edição de prazo
   const [editDeadlineToActivity, setEditDeadlineToActivity] = useState(null);
   const [newDeadlineDate, setNewDeadlineDate] = useState('');
-  const [newDeadlineTime, setNewDeadlineTime] = useState('23:59');
   const [savingDeadline, setSavingDeadline] = useState(false);
   const [deadlineError, setDeadlineError] = useState(null);
 
@@ -179,9 +178,11 @@ export default function ActivityListPage() {
           comparison = (a.status || '').localeCompare(b.status || '');
           break;
         case 'periodo': {
-          const dateA = a.fimEm ? new Date(a.fimEm).getTime() : 0;
-          const dateB = b.fimEm ? new Date(b.fimEm).getTime() : 0;
-          comparison = dateA - dateB;
+          const startA = a.inicioEm || a.dataAbertura ? new Date(a.inicioEm || a.dataAbertura).getTime() : 0;
+          const startB = b.inicioEm || b.dataAbertura ? new Date(b.inicioEm || b.dataAbertura).getTime() : 0;
+          const endA = a.fimEm || a.dataFechamento ? new Date(a.fimEm || a.dataFechamento).getTime() : 0;
+          const endB = b.fimEm || b.dataFechamento ? new Date(b.fimEm || b.dataFechamento).getTime() : 0;
+          comparison = (startA - startB) || (endA - endB);
           break;
         }
         case 'funcoes': {
@@ -202,6 +203,10 @@ export default function ActivityListPage() {
   // Abre diálogo de edição de prazo
   const handleOpenEditDeadline = (atv) => {
     if (!atv) return;
+    if (atv.status === 'ENCERRADA') {
+      showError('Esta atividade já está encerrada e não pode ter seu prazo alterado.');
+      return;
+    }
     setEditDeadlineToActivity(atv);
     setDeadlineError(null);
     const dateVal = atv.fimEm || atv.dataFechamento;
@@ -211,28 +216,30 @@ export default function ActivityListPage() {
         const yyyy = dateObj.getFullYear();
         const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
         const dd = String(dateObj.getDate()).padStart(2, '0');
-        const hh = String(dateObj.getHours()).padStart(2, '0');
-        const min = String(dateObj.getMinutes()).padStart(2, '0');
         setNewDeadlineDate(`${yyyy}-${mm}-${dd}`);
-        setNewDeadlineTime(`${hh}:${min}`);
         return;
       }
     }
     setNewDeadlineDate('');
-    setNewDeadlineTime('23:59');
   };
 
-  // Salva novo prazo
+  // Salva novo prazo (apenas dia, encerrando no final do dia às 23:59:59)
   const handleSaveDeadline = async () => {
     if (!editDeadlineToActivity || !newDeadlineDate) {
       setDeadlineError('Informe uma data válida.');
       return;
     }
+    if (editDeadlineToActivity.status === 'ENCERRADA') {
+      showError('Esta atividade já está encerrada e não pode ter seu prazo alterado.');
+      setEditDeadlineToActivity(null);
+      return;
+    }
     setSavingDeadline(true);
     setDeadlineError(null);
     try {
-      const isoString = new Date(`${newDeadlineDate}T${newDeadlineTime || '23:59'}:00`).toISOString();
-      await updateAtividade(editDeadlineToActivity.uuid, { fimEm: isoString });
+      const [ano, mes, dia] = newDeadlineDate.split('-').map(Number);
+      const dataLimite = new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+      await updateAtividade(editDeadlineToActivity.uuid, { fimEm: dataLimite.toISOString() });
       showSuccess('Prazo de encerramento atualizado com sucesso.');
       setEditDeadlineToActivity(null);
       await refetchAll();
@@ -504,7 +511,7 @@ export default function ActivityListPage() {
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ fontSize: '0.875rem', mb: 2.5 }}>
-            Ajuste a data e horário limite para entrega de soluções na atividade{' '}
+            Ajuste a data limite para entrega de soluções na atividade{' '}
             <strong>"{editDeadlineToActivity?.titulo}"</strong>.
           </DialogContentText>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -513,15 +520,6 @@ export default function ActivityListPage() {
               type="date"
               value={newDeadlineDate}
               onChange={(e) => setNewDeadlineDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-              size="small"
-            />
-            <TextField
-              label="Horário de encerramento"
-              type="time"
-              value={newDeadlineTime}
-              onChange={(e) => setNewDeadlineTime(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
               size="small"

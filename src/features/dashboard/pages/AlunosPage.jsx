@@ -31,6 +31,7 @@ import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import PersonRemoveOutlinedIcon from '@mui/icons-material/PersonRemoveOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 
@@ -122,6 +123,10 @@ function MetricCard({ icon, value, label, background, color, loading }) {
       sx={{
         p: 2.5,
         height: '100%',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
         borderRadius: 3.5,
         borderColor: '#E5ECF7',
         bgcolor: 'rgba(255,255,255,0.96)',
@@ -132,7 +137,7 @@ function MetricCard({ icon, value, label, background, color, loading }) {
         <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: background, color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
           {icon}
         </Box>
-        <Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
           {loading
             ? <Skeleton width={48} height={34} />
             : <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.05, color: '#111B59' }}>{value}</Typography>}
@@ -143,88 +148,224 @@ function MetricCard({ icon, value, label, background, color, loading }) {
   );
 }
 
+const GROUP_CONFIG = {
+  completed: {
+    titulo: 'Atividades concluídas',
+    subtitulo: 'Todas as funções foram enviadas.',
+    vazio: 'Nenhuma atividade concluída.',
+    icon: <CheckCircleIcon />,
+    iconBg: '#E4FAEF',
+    iconColor: '#08B873',
+    badgeLabel: 'Concluída',
+    badgeBg: '#E4FAEF',
+    badgeColor: '#08B873',
+  },
+  in_progress: {
+    titulo: 'Em progresso',
+    subtitulo: 'Funções parcialmente enviadas.',
+    vazio: 'Nenhuma atividade em progresso.',
+    icon: <PlayArrowRoundedIcon />,
+    iconBg: '#EFF8FF',
+    iconColor: '#1570EF',
+    badgeLabel: 'Em progresso',
+    badgeBg: '#E8F2FF',
+    badgeColor: '#0756D8',
+  },
+  not_started: {
+    titulo: 'Não iniciadas',
+    subtitulo: 'Nenhuma função enviada ainda.',
+    vazio: 'Nenhuma atividade não iniciada.',
+    icon: <AccessTimeOutlinedIcon />,
+    iconBg: '#F2F4F7',
+    iconColor: '#64748B',
+    badgeLabel: 'Não iniciada',
+    badgeBg: '#F1F4F8',
+    badgeColor: '#64748B',
+  },
+};
+
 function ActivityGroupCard({ kind, activities, showAll, onToggleAll, onOpenActivity }) {
-  const concluida = kind === 'completed';
-  const titulo = concluida ? 'Atividades concluídas' : 'Atividades pendentes';
+  const config = GROUP_CONFIG[kind] || GROUP_CONFIG.not_started;
+  const isCompleted = kind === 'completed';
   const visiveis = showAll ? activities : activities.slice(0, MAX_VISIBLE_ACTIVITIES);
 
   return (
-    <Card variant="outlined" sx={{ p: 2.25, height: '100%', borderRadius: 3, borderColor: '#E1EAF8', bgcolor: '#FFFFFF' }}>
-      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ pb: 1.25, mb: 0.5, borderBottom: '1px solid #E8EEF8' }}>
-        <Box sx={{ width: 44, height: 44, borderRadius: '50%', bgcolor: concluida ? '#E4FAEF' : '#EEF0FF', color: concluida ? '#08B873' : '#5145F5', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          {concluida ? <CheckCircleIcon /> : <AccessTimeOutlinedIcon />}
-        </Box>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#111B59', lineHeight: 1.2 }}>
-            {titulo} ({activities.length})
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#6478B4', mt: 0.35 }}>
-            {concluida ? 'Todas as funções foram enviadas.' : 'Ainda há funções para enviar.'}
-          </Typography>
-        </Box>
+    <Card
+      variant="outlined"
+      sx={{
+        p: { xs: 2, sm: 2.25, md: 2.5 },
+        height: '100%',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 3,
+        borderColor: '#E1EAF8',
+        bgcolor: '#FFFFFF',
+        boxShadow: '0 2px 10px rgba(17, 27, 89, 0.04)',
+        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+        '&:hover': {
+          borderColor: '#CADCF5',
+          boxShadow: '0 4px 16px rgba(17, 27, 89, 0.08)',
+        },
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={1.25}
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ pb: 1.5, mb: 1, borderBottom: '1px solid #E8EEF8' }}
+      >
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: '50%',
+              bgcolor: config.iconBg,
+              color: config.iconColor,
+              display: 'grid',
+              placeItems: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {config.icon}
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#111B59', lineHeight: 1.2 }} noWrap>
+              {config.titulo}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#6478B4', mt: 0.25, fontSize: '0.8125rem' }} noWrap>
+              {config.subtitulo}
+            </Typography>
+          </Box>
+        </Stack>
+        <Chip
+          label={`${activities.length}`}
+          size="small"
+          sx={{
+            fontWeight: 800,
+            fontSize: '0.8rem',
+            height: 26,
+            minWidth: 28,
+            px: 0.75,
+            bgcolor: config.badgeBg,
+            color: config.badgeColor,
+            borderRadius: '13px',
+            flexShrink: 0,
+          }}
+        />
       </Stack>
 
       {visiveis.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-          {concluida ? 'Nenhuma atividade concluída.' : 'Nenhuma atividade pendente.'}
-        </Typography>
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 120,
+            my: 1,
+            p: 2,
+            borderRadius: 2.5,
+            bgcolor: '#FAFBFC',
+            border: '1px dashed #E2E8F0',
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#94A3B8', fontWeight: 500, textAlign: 'center' }}>
+            {config.vazio}
+          </Typography>
+        </Box>
       ) : (
-        visiveis.map((atividade, index) => (
-          <Box
-            key={atividade.uuid}
-            sx={{
-              minHeight: 46,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 1,
-              px: 0.75,
-              borderBottom: index < visiveis.length - 1 ? '1px solid #E8EEF8' : 'none',
-            }}
-          >
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, color: '#111B59' }} noWrap>
-                {atividade.titulo}
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexShrink: 0 }}>
-              <Typography variant="body2" sx={{ color: '#6478B4', whiteSpace: 'nowrap' }}>
-                {atividade.funcoesEnviadas}/{atividade.totalFuncoes} funções
-                {concluida && ` · nota ${formatNota(atividade.nota)}`}
-              </Typography>
-              {!concluida && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {visiveis.map((atividade, index) => (
+            <Box
+              key={atividade.uuid}
+              sx={{
+                minHeight: 52,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1.5,
+                px: 1,
+                py: 0.75,
+                borderRadius: 2,
+                transition: 'background-color 0.15s ease',
+                '&:hover': { bgcolor: '#F8FAFD' },
+                borderBottom: index < visiveis.length - 1 ? '1px solid #EDF2F9' : 'none',
+              }}
+            >
+              <Box sx={{ minWidth: 0, flex: 1, pr: 0.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#111B59' }} noWrap>
+                  {atividade.titulo}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#6478B4', display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
+                  <span>{atividade.funcoesEnviadas}/{atividade.totalFuncoes} funções</span>
+                  {isCompleted && atividade.nota !== null && atividade.nota !== undefined && (
+                    <>
+                      <span style={{ opacity: 0.5 }}>•</span>
+                      <strong style={{ color: '#08B873', fontWeight: 700 }}>Nota {formatNota(atividade.nota)}</strong>
+                    </>
+                  )}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexShrink: 0 }}>
                 <Chip
                   size="small"
-                  label={atividade.funcoesEnviadas > 0 ? 'Em andamento' : 'Não iniciada'}
+                  label={config.badgeLabel}
                   sx={{
-                    height: 28,
+                    height: 24,
+                    fontSize: '0.72rem',
                     px: 0.5,
-                    color: atividade.funcoesEnviadas > 0 ? '#0756D8' : '#64748B',
-                    bgcolor: atividade.funcoesEnviadas > 0 ? '#E8F2FF' : '#F1F4F8',
+                    color: config.badgeColor,
+                    bgcolor: config.badgeBg,
                     fontWeight: 600,
+                    borderRadius: '6px',
                   }}
                 />
-              )}
-              <Tooltip title={`Abrir atividade ${atividade.titulo}`}>
-                <IconButton size="small" color="primary" onClick={() => onOpenActivity(atividade.uuid)} aria-label={`Abrir atividade ${atividade.titulo}`}>
-                  <KeyboardArrowRightIcon />
-                </IconButton>
-              </Tooltip>
-            </Stack>
-          </Box>
-        ))
+                <Tooltip title={`Abrir atividade ${atividade.titulo}`}>
+                  <IconButton
+                    size="small"
+                    onClick={() => onOpenActivity(atividade.uuid)}
+                    aria-label={`Abrir atividade ${atividade.titulo}`}
+                    sx={{
+                      color: '#2563EB',
+                      bgcolor: '#EFF6FF',
+                      '&:hover': { bgcolor: '#DBEAFE', color: '#1D4ED8' },
+                      width: 30,
+                      height: 30,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <KeyboardArrowRightIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Box>
+          ))}
+        </Box>
       )}
 
       {activities.length > MAX_VISIBLE_ACTIVITIES && (
-        <Button
-          fullWidth
-          size="small"
-          onClick={onToggleAll}
-          sx={{ mt: 1, py: 0.8, borderRadius: 2, bgcolor: '#EEF0FF', color: '#174CF5', fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#E3E7FF' } }}
-        >
-          {showAll ? 'Mostrar menos' : `Ver todas as ${activities.length}`}
-          {showAll ? <KeyboardArrowDownIcon sx={{ ml: 0.5, transform: 'rotate(180deg)' }} /> : <KeyboardArrowRightIcon sx={{ ml: 0.5 }} />}
-        </Button>
+        <Box sx={{ mt: 'auto', pt: 1.5 }}>
+          <Button
+            fullWidth
+            size="small"
+            onClick={onToggleAll}
+            sx={{
+              py: 0.8,
+              borderRadius: 2,
+              bgcolor: '#EEF0FF',
+              color: '#174CF5',
+              fontWeight: 700,
+              textTransform: 'none',
+              '&:hover': { bgcolor: '#E3E7FF' },
+            }}
+          >
+            {showAll ? 'Mostrar menos' : `Ver todas as ${activities.length}`}
+            {showAll ? <KeyboardArrowDownIcon sx={{ ml: 0.5, transform: 'rotate(180deg)' }} /> : <KeyboardArrowRightIcon sx={{ ml: 0.5 }} />}
+          </Button>
+        </Box>
       )}
     </Card>
   );
@@ -356,8 +497,8 @@ export default function AlunosPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25 }}>
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={4}>
+      <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ width: '100%' }} alignItems="stretch">
+        <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex' }}>
           <MetricCard
             icon={<PeopleAltOutlinedIcon sx={{ fontSize: 31 }} />}
             value={alunos.length}
@@ -367,7 +508,7 @@ export default function AlunosPage() {
             loading={loading}
           />
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex' }}>
           <MetricCard
             icon={<CheckCircleIcon sx={{ fontSize: 31 }} />}
             value={taxaDeEntrega}
@@ -377,9 +518,9 @@ export default function AlunosPage() {
             loading={loading}
           />
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex' }}>
           <MetricCard
-            icon={<PeopleAltOutlinedIcon sx={{ fontSize: 31 }} />}
+            icon={<PlayArrowRoundedIcon sx={{ fontSize: 31 }} />}
             value={alunosEmAndamento}
             label="Alunos com atividades em andamento"
             background="#E8F3FF"
@@ -424,8 +565,10 @@ export default function AlunosPage() {
               <TableBody>
                 {alunosFiltrados.map((aluno) => {
                   const expandido = alunosExpandidos.has(aluno.uuid);
-                  const concluidas = aluno.progressoAtividades.filter((atividade) => atividade.concluida);
-                  const pendentes = aluno.progressoAtividades.filter((atividade) => !atividade.concluida);
+                  const progresso = aluno.progressoAtividades || [];
+                  const concluidas = progresso.filter((atividade) => atividade.concluida);
+                  const emProgresso = progresso.filter((atividade) => !atividade.concluida && (atividade.funcoesEnviadas || 0) > 0);
+                  const naoIniciadas = progresso.filter((atividade) => !atividade.concluida && (atividade.funcoesEnviadas || 0) === 0);
 
                   return (
                     <Fragment key={aluno.uuid}>
@@ -463,9 +606,16 @@ export default function AlunosPage() {
                       </TableRow>
                       {expandido && (
                         <TableRow id={`progresso-${aluno.uuid}`}>
-                          <TableCell colSpan={4} sx={{ p: 1.5, bgcolor: '#F4F8FE', borderBottom: '1px solid #DDE8F8' }}>
-                            <Grid container spacing={1.5}>
-                              <Grid item xs={12} md={6}>
+                          <TableCell
+                            colSpan={4}
+                            sx={{
+                              p: { xs: 2, sm: 2.5, md: 3 },
+                              bgcolor: '#F8FAFD',
+                              borderBottom: '1px solid #DDE8F8',
+                            }}
+                          >
+                            <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ width: '100%' }} alignItems="stretch">
+                              <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex' }}>
                                 <ActivityGroupCard
                                   kind="completed"
                                   activities={concluidas}
@@ -474,12 +624,21 @@ export default function AlunosPage() {
                                   onOpenActivity={(atividadeUuid) => navigate(`/atividades/${atividadeUuid}`)}
                                 />
                               </Grid>
-                              <Grid item xs={12} md={6}>
+                              <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex' }}>
                                 <ActivityGroupCard
-                                  kind="pending"
-                                  activities={pendentes}
-                                  showAll={Boolean(listasExpandidas[`${aluno.uuid}:pending`])}
-                                  onToggleAll={() => alternarLista(aluno.uuid, 'pending')}
+                                  kind="in_progress"
+                                  activities={emProgresso}
+                                  showAll={Boolean(listasExpandidas[`${aluno.uuid}:in_progress`])}
+                                  onToggleAll={() => alternarLista(aluno.uuid, 'in_progress')}
+                                  onOpenActivity={(atividadeUuid) => navigate(`/atividades/${atividadeUuid}`)}
+                                />
+                              </Grid>
+                              <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex' }}>
+                                <ActivityGroupCard
+                                  kind="not_started"
+                                  activities={naoIniciadas}
+                                  showAll={Boolean(listasExpandidas[`${aluno.uuid}:not_started`])}
+                                  onToggleAll={() => alternarLista(aluno.uuid, 'not_started')}
                                   onOpenActivity={(atividadeUuid) => navigate(`/atividades/${atividadeUuid}`)}
                                 />
                               </Grid>

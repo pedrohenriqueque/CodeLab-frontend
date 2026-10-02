@@ -23,6 +23,7 @@ import {
   LinearProgress,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
 
@@ -46,8 +47,9 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ErrorRoundedIcon from '@mui/icons-material/ErrorRounded';
 import CheckIcon from '@mui/icons-material/Check';
 import TagRoundedIcon from '@mui/icons-material/TagRounded';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
-import { getSubmissao } from '../api';
+import { getSubmissao, getSubmissoes } from '../api';
 import ReadOnlyCodeViewer from '../components/ReadOnlyCodeViewer';
 import { formatScore, formatSubmissionDate } from '../components/submissionDisplay';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
@@ -128,15 +130,17 @@ function MetadataItem({ icon, label, value }) {
   );
 }
 
-function VisibleTestCase({ testCase, index }) {
-  const passed = testCase.aprovado;
+function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) {
+  const passed = Boolean(testCase.aprovado);
+  const isNeutral = Boolean(isNaoExecutado || testCase.naoExecutado);
   return (
     <Accordion
       disableGutters
-      defaultExpanded={!passed}
+      defaultExpanded={!passed && !isNeutral}
       elevation={0}
       sx={{
-        border: '1px solid #E2EAF6',
+        border: '1px solid',
+        borderColor: isNeutral ? '#E2EAF6' : passed ? '#A7F3D0' : '#FECACA',
         borderRadius: '8px !important',
         overflow: 'hidden',
         '&:before': { display: 'none' },
@@ -148,7 +152,7 @@ function VisibleTestCase({ testCase, index }) {
         sx={{
           minHeight: '36px !important',
           px: 1.5,
-          bgcolor: passed ? '#fff' : '#FFF5F5',
+          bgcolor: isNeutral ? '#F8FAFC' : passed ? '#fff' : '#FFF5F5',
           '& .MuiAccordionSummary-content': { my: '6px !important', alignItems: 'center', gap: 1 },
         }}
       >
@@ -170,20 +174,46 @@ function VisibleTestCase({ testCase, index }) {
         <Typography variant="body2" sx={{ flex: 1, fontWeight: 700, color: '#1E293B' }}>
           Caso {index + 1}
         </Typography>
-        <Chip
-          size="small"
-          icon={passed ? <CheckCircleRoundedIcon /> : <ErrorRoundedIcon />}
-          label={passed ? 'Aprovado' : 'Reprovado'}
-          sx={{
-            height: 24,
-            bgcolor: passed ? '#ECFDF5' : '#FEF2F2',
-            color: passed ? '#059669' : '#DC2626',
-            fontSize: '0.7rem',
-            fontWeight: 700,
-            border: `1px solid ${passed ? '#A7F3D0' : '#FECACA'}`,
-            '& .MuiChip-icon': { color: 'inherit', fontSize: 15 },
-          }}
-        />
+        {isNeutral ? (
+          <Tooltip
+            title={
+              isErroCompilacao
+                ? 'Caso de teste não executado devido a erro de compilação no GCC.'
+                : 'Caso de teste não avaliado devido a falha técnica.'
+            }
+            arrow
+          >
+            <Chip
+              size="small"
+              icon={<InfoOutlinedIcon sx={{ fontSize: '15px !important', color: '#64748B !important' }} />}
+              label="Não executado"
+              sx={{
+                height: 24,
+                bgcolor: '#F1F5F9',
+                color: '#475569',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                border: '1px solid #CBD5E1',
+                '& .MuiChip-icon': { color: 'inherit', fontSize: 15 },
+              }}
+            />
+          </Tooltip>
+        ) : (
+          <Chip
+            size="small"
+            icon={passed ? <CheckCircleRoundedIcon /> : <ErrorRoundedIcon />}
+            label={passed ? 'Aprovado' : 'Reprovado'}
+            sx={{
+              height: 24,
+              bgcolor: passed ? '#ECFDF5' : '#FEF2F2',
+              color: passed ? '#059669' : '#DC2626',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              border: `1px solid ${passed ? '#A7F3D0' : '#FECACA'}`,
+              '& .MuiChip-icon': { color: 'inherit', fontSize: 15 },
+            }}
+          />
+        )}
       </AccordionSummary>
       <AccordionDetails sx={{ px: 2, py: 1.25, bgcolor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5 }}>
@@ -246,12 +276,30 @@ export default function StudentSubmissionDetailPage() {
   useEffect(() => {
     let active = true;
     getSubmissao(uuid)
-      .then((item) => {
-        if (active) {
-          setSubmissao(item);
-          setLoading(false);
-          setError('');
+      .then(async (item) => {
+        if (!active) return;
+        let finalItem = item;
+        const funcUuid = finalItem?.funcaoUuid || finalItem?.funcao_atividade_uuid;
+        const ativUuid = finalItem?.atividadeUuid;
+        if (funcUuid && (!finalItem.tentativaNumero || finalItem.tentativaNumero > 1)) {
+          try {
+            const allSubs = await getSubmissoes();
+            const subsDestaFuncao = allSubs.filter(
+              (s) => (s.funcaoUuid === funcUuid || s.funcao_atividade_uuid === funcUuid) &&
+                     (!ativUuid || s.atividadeUuid === ativUuid)
+            );
+            const pos = subsDestaFuncao.findIndex((s) => s.uuid === item.uuid);
+            if (pos !== -1) {
+              const num = subsDestaFuncao.length - pos;
+              finalItem = { ...finalItem, tentativaNumero: num };
+            }
+          } catch (e) {
+            console.error('Erro ao calcular tentativaNumero:', e);
+          }
         }
+        setSubmissao(finalItem);
+        setLoading(false);
+        setError('');
       })
       .catch((err) => {
         if (active) {
@@ -305,12 +353,13 @@ export default function StudentSubmissionDetailPage() {
 
   // Identificação do fluxo: Prova / Restrito vs Exercício / Avaliado
   const isProva = (submissao.atividadeTipo || '').toUpperCase() === 'PROVA';
+  const isErroCompilacao = submissao.status === 'ERRO_COMPILACAO';
+  const isFalhaTecnica = Boolean(submissao.falhaTecnica || submissao.status === 'FALHA_TECNICA');
+  const isNaoExecutado = isErroCompilacao || isFalhaTecnica;
   const isEnvioRegistrado = submissao.status === 'ENVIO_REGISTRADO';
-  const isRestrito = isEnvioRegistrado || (isProva && submissao.nota == null && !submissao.falhaTecnica);
+  const isRestrito = (isEnvioRegistrado || (isProva && submissao.nota == null && !isFalhaTecnica)) && !isErroCompilacao;
 
   const isAvaliada = submissao.status === 'AVALIADA';
-  const isErroCompilacao = submissao.status === 'ERRO_COMPILACAO';
-  const isFalhaTecnica = submissao.falhaTecnica || submissao.status === 'FALHA_TECNICA';
 
   // Cálculos de nota e progresso
   const passed = submissao.casosAprovados ?? 0;
@@ -322,7 +371,10 @@ export default function StudentSubmissionDetailPage() {
     (c) => (c.visibilidade || '').toUpperCase() !== 'OCULTO'
   );
 
-  const backToFunctionUrl = submissao.atividadeUuid && submissao.funcaoUuid
+  const isMaxScore = submissao.nota != null && (submissao.pontosTotal || submissao.notaMaxima) != null &&
+    Number(submissao.nota) >= Number(submissao.pontosTotal || submissao.notaMaxima);
+
+  const backToFunctionUrl = !isRestrito && !isMaxScore && submissao.atividadeUuid && submissao.funcaoUuid
     ? `/aluno/atividades/${submissao.atividadeUuid}/funcao/${submissao.funcaoUuid}/submeter`
     : null;
 
@@ -330,17 +382,17 @@ export default function StudentSubmissionDetailPage() {
     ? `/aluno/atividades/${submissao.atividadeUuid}`
     : '/aluno/atividades';
 
+  const backUrl = backToFunctionUrl || backToActivityUrl;
+  const backLabel = backToFunctionUrl ? 'Voltar para a função' : 'Voltar para a atividade';
+
   return (
     <Box className="fade-in" sx={{ maxWidth: 1200, mx: 'auto', pb: 6 }}>
-      {/* ─── Link Superior de Retorno à Função ────────────────────────────── */}
+      {/* ─── Link Superior de Retorno ────────────────────────────── */}
       <Box sx={{ mb: 1.5 }}>
         <Button
           size="small"
           startIcon={<ArrowBackRoundedIcon sx={{ fontSize: 18 }} />}
-          onClick={() => {
-            if (backToFunctionUrl) navigate(backToFunctionUrl);
-            else navigate(-1);
-          }}
+          onClick={() => navigate(backUrl)}
           sx={{
             px: 0.5,
             textTransform: 'none',
@@ -350,7 +402,7 @@ export default function StudentSubmissionDetailPage() {
             '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
           }}
         >
-          Voltar para a função
+          {backLabel}
         </Button>
       </Box>
 
@@ -404,20 +456,38 @@ export default function StudentSubmissionDetailPage() {
                 }}
               />
             ) : isAvaliada ? (
-              <Chip
-                icon={<CheckCircleRoundedIcon sx={{ fontSize: '15px !important', color: '#059669 !important' }} />}
-                label="Avaliada"
-                sx={{
-                  bgcolor: '#ECFDF5',
-                  color: '#059669',
-                  border: '1px solid #A7F3D0',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  height: 28,
-                  borderRadius: 2,
-                  px: 0.5,
-                }}
-              />
+              <>
+                <Chip
+                  icon={<CheckCircleRoundedIcon sx={{ fontSize: '15px !important', color: '#059669 !important' }} />}
+                  label="Avaliada"
+                  sx={{
+                    bgcolor: '#ECFDF5',
+                    color: '#059669',
+                    border: '1px solid #A7F3D0',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    height: 28,
+                    borderRadius: 2,
+                    px: 0.5,
+                  }}
+                />
+                {isMaxScore && (
+                  <Chip
+                    icon={<CheckCircleRoundedIcon sx={{ fontSize: '15px !important', color: '#15803D !important' }} />}
+                    label="Nota máxima atingida"
+                    sx={{
+                      bgcolor: '#DCFCE7',
+                      color: '#15803D',
+                      border: '1px solid #86EFAC',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      height: 28,
+                      borderRadius: 2,
+                      px: 0.5,
+                    }}
+                  />
+                )}
+              </>
             ) : isErroCompilacao ? (
               <Chip
                 icon={<ErrorRoundedIcon sx={{ fontSize: '15px !important', color: '#DC2626 !important' }} />}
@@ -761,41 +831,83 @@ export default function StudentSubmissionDetailPage() {
 
           {/* ─── FLUXO C: Erro de Compilação ──────────────────────────────────── */}
           {!isRestrito && isErroCompilacao && (
-            <Card variant="outlined" sx={{ ...cardStyle, p: 2.5, borderColor: '#FECACA', bgcolor: '#FEF2F2' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, color: '#DC2626' }}>
-                <ErrorRoundedIcon sx={{ fontSize: 24 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#991B1B' }}>
-                  Falha na compilação do código
-                </Typography>
-              </Box>
-              <Typography variant="body2" sx={{ color: '#7F1D1D', mb: 1.5, fontSize: '0.85rem' }}>
-                O compilador C encontrou erros de sintaxe ou declaração. Nenhum caso de teste pôde ser executado.
-              </Typography>
-              {submissao.erroCompilacao && (
-                <Box
-                  component="pre"
-                  sx={{
-                    p: 1.5,
-                    bgcolor: '#1E293B',
-                    color: '#F87171',
-                    borderRadius: 2,
-                    fontSize: '0.78rem',
-                    fontFamily: 'monospace',
-                    overflowX: 'auto',
-                    m: 0,
-                  }}
-                >
-                  <code>{submissao.erroCompilacao}</code>
+            <>
+              <Card variant="outlined" sx={{ ...cardStyle, p: 2.5, borderColor: '#FDE68A', bgcolor: '#FEF9ED' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, color: '#D97706' }}>
+                  <ErrorRoundedIcon sx={{ fontSize: 24, color: '#D97706' }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#92400E' }}>
+                    Falha na compilação do código
+                  </Typography>
                 </Box>
+                <Typography variant="body2" sx={{ color: '#78350F', mb: 1.5, fontSize: '0.85rem' }}>
+                  O compilador GCC encontrou erros de sintaxe ou declaração. Nenhum caso de teste foi executado.
+                </Typography>
+                {submissao.erroCompilacao && (
+                  <Box
+                    component="pre"
+                    sx={{
+                      p: 1.5,
+                      bgcolor: '#1E293B',
+                      color: '#F87171',
+                      borderRadius: 2,
+                      fontSize: '0.78rem',
+                      fontFamily: 'monospace',
+                      overflowX: 'auto',
+                      m: 0,
+                    }}
+                  >
+                    <code>{submissao.erroCompilacao}</code>
+                  </Box>
+                )}
+              </Card>
+
+              {visibleCases.length > 0 && (
+                <Card variant="outlined" sx={cardStyle}>
+                  <SectionTitle icon={<ScienceOutlinedIcon fontSize="small" />}>
+                    Casos de teste visíveis
+                  </SectionTitle>
+                  <Box sx={{ p: 1.5, maxHeight: 380, overflowY: 'auto' }}>
+                    {visibleCases.map((testCase, index) => (
+                      <VisibleTestCase
+                        key={testCase.casoTesteAtividadeUuid || index}
+                        testCase={testCase}
+                        index={index}
+                        isNaoExecutado={true}
+                        isErroCompilacao={true}
+                      />
+                    ))}
+                  </Box>
+                </Card>
               )}
-            </Card>
+            </>
           )}
 
           {/* ─── FLUXO D: Falha Técnica ────────────────────────────────────────── */}
           {!isRestrito && isFalhaTecnica && (
-            <Alert severity="warning" sx={{ borderRadius: 2.5 }}>
-              A correção não pôde ser processada devido a uma instabilidade no ambiente de execução. Esta tentativa não foi penalizada.
-            </Alert>
+            <>
+              <Alert severity="warning" sx={{ borderRadius: 2.5 }}>
+                A correção não pôde ser processada devido a uma instabilidade no ambiente de execução. Esta tentativa não foi penalizada.
+              </Alert>
+
+              {visibleCases.length > 0 && (
+                <Card variant="outlined" sx={cardStyle}>
+                  <SectionTitle icon={<ScienceOutlinedIcon fontSize="small" />}>
+                    Casos de teste visíveis
+                  </SectionTitle>
+                  <Box sx={{ p: 1.5, maxHeight: 380, overflowY: 'auto' }}>
+                    {visibleCases.map((testCase, index) => (
+                      <VisibleTestCase
+                        key={testCase.casoTesteAtividadeUuid || index}
+                        testCase={testCase}
+                        index={index}
+                        isNaoExecutado={true}
+                        isErroCompilacao={false}
+                      />
+                    ))}
+                  </Box>
+                </Card>
+              )}
+            </>
           )}
         </Stack>
       </Box>

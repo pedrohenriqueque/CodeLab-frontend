@@ -89,7 +89,7 @@ export default function Layout() {
           backgroundColor: 'background.default',
         }}
       >
-        <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: 1440, mx: 'auto' }}>
+        <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: { xs: '100%', xl: 1680 }, mx: 'auto' }}>
           <Outlet />
         </Box>
       </Box>

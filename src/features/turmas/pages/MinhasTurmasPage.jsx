@@ -13,7 +13,6 @@ import Avatar from '@mui/material/Avatar';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Divider from '@mui/material/Divider';
-import Popover from '@mui/material/Popover';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -24,7 +23,6 @@ import Alert from '@mui/material/Alert';
 
 // Ícones Material UI
 import CodeRoundedIcon from '@mui/icons-material/CodeRounded';
-import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -37,12 +35,11 @@ import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
-import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
-import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 
 import { createTurma, ingressarTurma } from '../api';
 import { useTurmaContext } from '../context/TurmaContext';
 import { useAuth } from '../../auth/hooks/useAuthProvider';
+import LogoutConfirmDialog from '../../../shared/components/LogoutConfirmDialog';
 
 // Paleta de cores para os badges dos cards (índigo para Card 1, menta para Card 2, etc.)
 const CARD_PALETTES = [
@@ -134,7 +131,7 @@ export default function MinhasTurmasPage() {
 
   // Header Dropdowns
   const [anchorUser, setAnchorUser] = useState(null);
-  const [anchorNotif, setAnchorNotif] = useState(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Toast / Feedback de cópia
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
@@ -275,42 +272,8 @@ export default function MinhasTurmasPage() {
             </Box>
           </Stack>
 
-          {/* Notificações e Perfil do Usuário */}
+          {/* Perfil do Usuário */}
           <Stack direction="row" spacing={2} alignItems="center">
-            {/* Ícone de Sino */}
-            <Tooltip title="Notificações">
-              <IconButton
-                onClick={(e) => setAnchorNotif(e.currentTarget)}
-                size="medium"
-                sx={{
-                  color: '#64748B',
-                  transition: 'all 0.2s ease',
-                  '&:hover': { color: '#0F172A', bgcolor: '#F1F5F9' },
-                }}
-              >
-                <NotificationsNoneOutlinedIcon sx={{ fontSize: 22 }} />
-              </IconButton>
-            </Tooltip>
-
-            {/* Popover Notificações */}
-            <Popover
-              open={Boolean(anchorNotif)}
-              anchorEl={anchorNotif}
-              onClose={() => setAnchorNotif(null)}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-              PaperProps={{
-                sx: { p: 2, width: 280, borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.08)' },
-              }}
-            >
-              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#0F172A', mb: 0.5 }}>
-                Notificações
-              </Typography>
-              <Typography sx={{ fontSize: '0.825rem', color: '#64748B' }}>
-                Nenhuma nova notificação no momento.
-              </Typography>
-            </Popover>
-
             {/* Avatar e Perfil */}
             <Box
               onClick={(e) => setAnchorUser(e.currentTarget)}
@@ -381,8 +344,7 @@ export default function MinhasTurmasPage() {
               <MenuItem
                 onClick={() => {
                   setAnchorUser(null);
-                  logout();
-                  navigate('/login');
+                  setShowLogoutConfirm(true);
                 }}
                 sx={{ fontSize: '0.875rem', color: '#DC2626', py: 1 }}
               >
@@ -769,6 +731,16 @@ export default function MinhasTurmasPage() {
       <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast((current) => ({ ...current, open: false }))}>
         <Alert severity={toast.severity} onClose={() => setToast((current) => ({ ...current, open: false }))}>{toast.message}</Alert>
       </Snackbar>
+
+      <LogoutConfirmDialog
+        open={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          logout();
+          navigate('/login');
+        }}
+      />
     </Box>
   );
 }

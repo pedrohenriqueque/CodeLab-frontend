@@ -72,6 +72,8 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import LockRoundedIcon from '@mui/icons-material/LockRounded';
+import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 
 import { getFuncao, getAtividade, getFuncoesAtividade } from '../../atividades/api';
 import { createSubmissao, getSubmissoes } from '../api';
@@ -343,9 +345,17 @@ function DetalhesTentativaDialog({ open, onClose, tentativa, onRestaurarCodigo }
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
               Casos aprovados
             </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {tentativa.totalCasos ? `${tentativa.casosAprovados} / ${tentativa.totalCasos}` : '—'}
-            </Typography>
+            {isErroCompilacao || tentativa.falhaTecnica ? (
+              <Tooltip title={isErroCompilacao ? "Casos de teste não executados por erro de compilação no GCC." : "Casos de teste não avaliados por falha técnica."} arrow>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                  Não executados
+                </Typography>
+              </Tooltip>
+            ) : (
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {tentativa.totalCasos ? `${tentativa.casosAprovados} / ${tentativa.totalCasos}` : '—'}
+              </Typography>
+            )}
           </Box>
         </Box>
 
@@ -490,6 +500,9 @@ export default function CodeSubmissionPage() {
         const hist = await fetchHistorico();
         if (hist && hist.length > 0) {
           setResultado(hist[0]);
+          if (hist[0].codigoSubmetido) {
+            setCodigo(hist[0].codigoSubmetido);
+          }
           // Inicializar acordeons de casos de teste expandidos
           const initialExpanded = {};
           (funcaoData?.casosTeste || []).forEach((c, idx) => {
@@ -522,40 +535,89 @@ export default function CodeSubmissionPage() {
   });
 
   const isProva = atividade?.tipo?.toUpperCase() === 'PROVA';
-  const jaEnviouProva = isProva && historicoTentativas.some((t) => !t.falhaTecnica);
+  const jaEnviouProva = isProva && historicoTentativas.some(
+    (t) => !t.falhaTecnica && t.status !== 'FALHA_TECNICA' && t.status !== 'ERRO_COMPILACAO'
+  );
   const isFechada =
     atividade?.status === 'ENCERRADA' ||
     (atividade?.dataFechamento && new Date(atividade.dataFechamento) < new Date());
 
-  const tentativasUsadas = historicoTentativas.length;
-  const hasSubmissoes = tentativasUsadas > 0 || resultado !== null;
+  const melhorTentativaComNotaMaxima = historicoTentativas.find((t) => {
+    if (t.falhaTecnica || t.status === 'ERRO_COMPILACAO') return false;
+    const max = t.notaMaxima || pontosMax;
+    const atingiuNota = t.nota != null && max != null && Number(t.nota) >= Number(max);
+    const atingiuCasos = t.casosAprovados != null && t.totalCasos != null && t.totalCasos > 0 && t.casosAprovados === t.totalCasos;
+    return atingiuNota || atingiuCasos;
+  });
+
+  const resultadoAtingiuNotaMaxima = resultado && !resultado.falhaTecnica && resultado.status !== 'ERRO_COMPILACAO' && (
+    (resultado.nota != null && pontosMax != null && Number(resultado.nota) >= Number(pontosMax)) ||
+    (resultado.casosAprovados != null && resultado.totalCasos != null && resultado.totalCasos > 0 && resultado.casosAprovados === resultado.totalCasos)
+  );
+
+  const jaAtingiuNotaMaxima = Boolean(melhorTentativaComNotaMaxima || resultadoAtingiuNotaMaxima);
+  const submissaoNotaMaxima = melhorTentativaComNotaMaxima || (resultadoAtingiuNotaMaxima ? resultado : null);
+  const submissaoNotaMaximaUuid = submissaoNotaMaxima?.uuid;
+
+  const isErroCompilacao = resultado?.status === 'ERRO_COMPILACAO';
+  const isFalhaTecnica = Boolean(resultado?.falhaTecnica || resultado?.status === 'FALHA_TECNICA');
+  const isNaoExecutado = isErroCompilacao || isFalhaTecnica;
+  const isEnvioRegistrado = (resultado?.status === 'ENVIO_REGISTRADO' || (resultado && resultado.nota == null && !isFalhaTecnica && isProva)) && !isErroCompilacao;
+  const isRestrito = isEnvioRegistrado && !isErroCompilacao && !isFalhaTecnica;
+
+  const tentativasUsadas = isProva
+    ? historicoTentativas.filter((t) => !t.falhaTecnica && t.status !== 'FALHA_TECNICA' && t.status !== 'ERRO_COMPILACAO').length
+    : historicoTentativas.filter((t) => !t.falhaTecnica && t.status !== 'FALHA_TECNICA').length;
+  const hasSubmissoes = tentativasUsadas > 0 || (resultado !== null && !isErroCompilacao && !isFalhaTecnica);
+  const hasTentativas = historicoTentativas.length > 0 || resultado !== null;
 
   // Enviar tentativa de código
   const handleSubmit = async () => {
-    if (!codigo.trim() || submitting || isFechada || jaEnviouProva) return;
+    if (!codigo.trim() || submitting || isFechada || jaEnviouProva || jaAtingiuNotaMaxima) return;
     setSubmitting(true);
 
     try {
       const res = await createSubmissao(funcaoUuid, codigo);
       setResultado(res);
-      showSuccess(isProva ? 'Prova enviada com sucesso!' : 'Tentativa avaliada com sucesso!');
 
       // Atualizar lista de tentativas
       const novoHist = await fetchHistorico();
-      if (novoHist && novoHist.length > 0) {
-        setResultado(novoHist[0]);
+      const ultimaTentativa = (novoHist && novoHist.length > 0) ? novoHist[0] : res;
+      setResultado(ultimaTentativa);
+
+      const atingiuMax = (
+        (ultimaTentativa?.nota != null && pontosMax != null && Number(ultimaTentativa.nota) >= Number(pontosMax)) ||
+        (ultimaTentativa?.casosAprovados != null && ultimaTentativa?.totalCasos != null && ultimaTentativa.totalCasos > 0 && ultimaTentativa.casosAprovados === ultimaTentativa.totalCasos)
+      );
+
+      if (isProva) {
+        if (res.status === 'ERRO_COMPILACAO') {
+          showError('Falha na compilação do código (GCC). A tentativa não foi consumida. Corrija os erros e envie novamente.');
+        } else if (res.status === 'FALHA_TECNICA' || res.falhaTecnica) {
+          showError('Houve uma falha técnica do sistema. A tentativa não foi consumida.');
+        } else {
+          showSuccess('Prova enviada com sucesso! O resultado fica sob sigilo até o término da prova.');
+        }
+      } else if (atingiuMax) {
+        showSuccess('Parabéns! Você tirou a nota máxima nesta função!');
+      } else {
+        showSuccess('Tentativa avaliada com sucesso!');
       }
 
-      // Expandir casos de teste para visualização imediata do feedback
-      const exp = {};
-      casosVisiveis.forEach((c, i) => {
-        exp[c.uuid || i] = true;
-      });
-      setExpandedCases(exp);
+      // Expandir casos de teste para visualização imediata do feedback (se não for restrito)
+      if (!isProva && ultimaTentativa?.status !== 'ENVIO_REGISTRADO') {
+        const exp = {};
+        casosVisiveis.forEach((c, i) => {
+          exp[c.uuid || i] = true;
+        });
+        setExpandedCases(exp);
+      }
     } catch (err) {
       const apiMessage = err.response?.data?.erro || err.response?.data?.detail;
       if (apiMessage?.includes('já entregue')) {
         showError('Esta atividade já foi entregue.');
+      } else if (apiMessage?.includes('nota máxima') || apiMessage?.includes('pontuação máxima')) {
+        showError('Você já atingiu a pontuação máxima para esta função.');
       } else if (apiMessage?.includes('limite') || apiMessage?.includes('tentativa')) {
         showError('Você atingiu o limite de tentativas para esta função.');
       } else {
@@ -857,17 +919,91 @@ export default function CodeSubmissionPage() {
         </CardContent>
       </Card>
 
-      {/* ─── Alertas de Restrição (Modo Prova e Prazo) ──────────────────── */}
+      {/* ─── Alertas de Restrição (Nota Máxima, Modo Prova e Prazo) ──────────── */}
       {isFechada && (
         <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
           O prazo para entrega desta atividade encerrou. O envio de novas submissões está desabilitado.
         </Alert>
       )}
 
-      {jaEnviouProva && !isFechada && (
-        <Alert severity="info" icon={<TaskAltIcon />} sx={{ mb: 3, borderRadius: 2 }}>
-          Sua resposta para esta função da prova já foi enviada. Uma nova submissão não é permitida.
-        </Alert>
+      {jaAtingiuNotaMaxima && !isFechada && (
+        <Card
+          elevation={0}
+          sx={{
+            mb: 3,
+            p: 2.5,
+            borderRadius: 3,
+            border: '1.5px solid #86EFAC',
+            bgcolor: '#F0FDF4',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: 2.5,
+              bgcolor: '#DCFCE7',
+              color: '#16A34A',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <TaskAltIcon sx={{ fontSize: 26 }} />
+          </Box>
+          <Box>
+            <Typography sx={{ fontWeight: 800, color: '#14532D', fontSize: '1rem' }}>
+              Parabéns! Você tirou a nota máxima nesta função ({formatScoreDisplay(pontosMax, pontosMax)} pts)
+            </Typography>
+            <Typography sx={{ color: '#166534', fontSize: '0.84rem', mt: 0.25 }}>
+              Esta função foi concluída com sucesso. Novas submissões estão bloqueadas para esta função.
+            </Typography>
+          </Box>
+        </Card>
+      )}
+
+      {jaEnviouProva && !jaAtingiuNotaMaxima && !isFechada && (
+        <Card
+          elevation={0}
+          sx={{
+            mb: 3,
+            p: 2.25,
+            borderRadius: 3,
+            border: '1.5px solid #FDE68A',
+            bgcolor: '#FEF9ED',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 2.5,
+              bgcolor: '#FEF3C7',
+              color: '#B45309',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <TaskAltIcon sx={{ fontSize: 24 }} />
+          </Box>
+          <Box>
+            <Typography sx={{ fontWeight: 800, color: '#78350F', fontSize: '0.95rem' }}>
+              Resposta para esta função da prova já enviada
+            </Typography>
+            <Typography sx={{ color: '#92400E', fontSize: '0.825rem', mt: 0.25 }}>
+              Sua resposta foi registrada com sucesso. Uma nova submissão não é permitida nesta prova.
+            </Typography>
+          </Box>
+        </Card>
       )}
 
       {/* ─── Grid Principal: Editor de Código + Painel Direito ──────────── */}
@@ -909,6 +1045,20 @@ export default function CodeSubmissionPage() {
             </Box>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {jaAtingiuNotaMaxima && (
+                <Chip
+                  label="Nota máxima atingida (Modo Leitura)"
+                  size="small"
+                  icon={<CheckCircleIcon sx={{ fontSize: '14px !important', color: '#16A34A !important' }} />}
+                  sx={{
+                    bgcolor: '#DCFCE7',
+                    color: '#15803D',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    height: 26,
+                  }}
+                />
+              )}
               <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem' }}>
                 Linguagem:
               </Typography>
@@ -935,7 +1085,7 @@ export default function CodeSubmissionPage() {
             value={codigo}
             onChange={setCodigo}
             onPaste={handlePaste}
-            disabled={submitting || isFechada || jaEnviouProva}
+            disabled={submitting || isFechada || jaEnviouProva || jaAtingiuNotaMaxima}
           />
 
           {/* Botões de Ação do Editor */}
@@ -943,31 +1093,47 @@ export default function CodeSubmissionPage() {
             <Button
               id="btn-enviar-tentativa"
               variant="contained"
-              startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
+              startIcon={
+                submitting ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : jaAtingiuNotaMaxima ? (
+                  <CheckCircleIcon />
+                ) : jaEnviouProva ? (
+                  <TaskAltIcon />
+                ) : (
+                  <PlayArrowIcon />
+                )
+              }
               onClick={handleSubmit}
-              disabled={submitting || !codigo.trim() || isFechada || jaEnviouProva}
+              disabled={submitting || !codigo.trim() || isFechada || jaEnviouProva || jaAtingiuNotaMaxima}
               sx={{
                 flex: { xs: 1, sm: 'auto' },
                 minWidth: 170,
                 py: 1.1,
                 px: 3,
-                backgroundColor: '#0284C7',
+                backgroundColor: jaAtingiuNotaMaxima ? '#16A34A' : '#0284C7',
                 color: '#FFFFFF',
                 textTransform: 'none',
                 fontWeight: 700,
                 fontSize: '0.875rem',
                 borderRadius: 2,
-                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                boxShadow: jaAtingiuNotaMaxima ? 'none' : '0 2px 4px rgba(2, 132, 199, 0.25)',
                 '&:hover': {
-                  backgroundColor: '#0369A1',
+                  backgroundColor: jaAtingiuNotaMaxima ? '#15803D' : '#0369A1',
                 },
                 '&.Mui-disabled': {
-                  backgroundColor: '#94A3B8',
-                  color: '#FFFFFF',
+                  backgroundColor: jaAtingiuNotaMaxima ? '#86EFAC' : '#94A3B8',
+                  color: jaAtingiuNotaMaxima ? '#14532D' : '#FFFFFF',
                 },
               }}
             >
-              {submitting ? 'Avaliando no Judge0...' : jaEnviouProva ? 'Tentativa registrada' : 'Enviar tentativa'}
+              {submitting
+                ? 'Avaliando no Judge0...'
+                : jaAtingiuNotaMaxima
+                ? 'Nota máxima atingida'
+                : jaEnviouProva
+                ? 'Tentativa registrada'
+                : 'Enviar tentativa'}
             </Button>
 
             <Button
@@ -975,7 +1141,7 @@ export default function CodeSubmissionPage() {
               variant="outlined"
               startIcon={<RestartAltIcon />}
               onClick={handleRestaurarTemplate}
-              disabled={submitting || isFechada || jaEnviouProva}
+              disabled={submitting || isFechada || jaEnviouProva || jaAtingiuNotaMaxima}
               sx={{
                 flex: { xs: 1, sm: 'auto' },
                 py: 1.1,
@@ -1001,7 +1167,7 @@ export default function CodeSubmissionPage() {
         {/* ── Coluna Direita: Orientações / Resultado + Casos de Teste ─────── */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Card Superior: "Orientações" (0 tentativas) OU "Resultado da tentativa" (com envio) */}
-          {!hasSubmissoes ? (
+          {!hasTentativas ? (
             /* Mockup Imagem 1: Orientações Iniciais */
             <Card
               variant="outlined"
@@ -1060,22 +1226,139 @@ export default function CodeSubmissionPage() {
                 ))}
               </Box>
             </Card>
+          ) : isRestrito ? (
+            /* Card de Resultado da Prova (Sob Sigilo) */
+            <Card
+              variant="outlined"
+              sx={{
+                borderRadius: 3,
+                borderColor: '#FDE68A',
+                bgcolor: '#FEF9ED',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                p: { xs: 2.5, sm: 3 },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TaskAltIcon sx={{ color: '#B45309', fontSize: 24 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#78350F', fontSize: '1.05rem' }}>
+                    Submissão registrada
+                  </Typography>
+                </Box>
+                <Chip
+                  icon={<AccessTimeRoundedIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />}
+                  label="Recebida"
+                  size="small"
+                  sx={{
+                    bgcolor: '#334E68',
+                    color: '#FFFFFF',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    height: 24,
+                    borderRadius: '6px',
+                  }}
+                />
+              </Box>
+
+              <Typography variant="body2" sx={{ color: '#78350F', lineHeight: 1.5, mb: 2, fontSize: '0.84rem' }}>
+                Sua resposta para esta função foi enviada e gravada com sucesso. Em avaliações do tipo <strong>Prova</strong>, a validação dos casos de teste e a nota permanecem sob sigilo pedagógico até o término da prova.
+              </Typography>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 1.75, bgcolor: '#FFFFFF', borderRadius: 2, border: '1px solid #FDE68A', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircleIcon sx={{ fontSize: 18, color: '#16A34A' }} />
+                  <Typography variant="body2" sx={{ color: '#334155', fontWeight: 600, fontSize: '0.825rem' }}>
+                    Código-fonte enviado com sucesso
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircleIcon sx={{ fontSize: 18, color: '#16A34A' }} />
+                  <Typography variant="body2" sx={{ color: '#334155', fontWeight: 600, fontSize: '0.825rem' }}>
+                    Tentativa computada no sistema
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AccessTimeRoundedIcon sx={{ fontSize: 18, color: '#B45309' }} />
+                  <Typography variant="body2" sx={{ color: '#92400E', fontWeight: 600, fontSize: '0.825rem' }}>
+                    Casos de teste e nota ocultos até a publicação
+                  </Typography>
+                </Box>
+              </Box>
+            </Card>
           ) : (
             /* Mockup Imagem 2: Resultado da Tentativa */
             <Card
               variant="outlined"
               sx={{
                 borderRadius: 3,
-                borderColor: '#E2E8F0',
+                borderColor: jaAtingiuNotaMaxima ? '#86EFAC' : isErroCompilacao ? '#FDE68A' : isFalhaTecnica ? '#CBD5E1' : '#E2E8F0',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 p: { xs: 2.5, sm: 3 },
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
-                <CheckCircleIcon sx={{ color: '#0284C7', fontSize: 24 }} />
-                <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', fontSize: '1.05rem' }}>
-                  Resultado da tentativa
-                </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isErroCompilacao ? (
+                    <InfoOutlinedIcon sx={{ color: '#D97706', fontSize: 24 }} />
+                  ) : isFalhaTecnica ? (
+                    <InfoOutlinedIcon sx={{ color: '#64748B', fontSize: 24 }} />
+                  ) : (
+                    <CheckCircleIcon sx={{ color: jaAtingiuNotaMaxima ? '#16A34A' : '#0284C7', fontSize: 24 }} />
+                  )}
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', fontSize: '1.05rem' }}>
+                    Resultado da tentativa
+                  </Typography>
+                </Box>
+                {jaAtingiuNotaMaxima ? (
+                  <Chip
+                    icon={<CheckCircleIcon sx={{ fontSize: '15px !important', color: '#15803D !important' }} />}
+                    label="Nota máxima atingida"
+                    size="small"
+                    sx={{
+                      backgroundColor: '#DCFCE7',
+                      color: '#15803D',
+                      fontWeight: 700,
+                      fontSize: '0.75rem',
+                      borderRadius: '12px',
+                      px: 0.5,
+                      height: 24,
+                    }}
+                  />
+                ) : isErroCompilacao ? (
+                  <Tooltip title="O código não compilou no GCC. Os casos de teste não foram executados." arrow>
+                    <Chip
+                      icon={<InfoOutlinedIcon sx={{ fontSize: '15px !important', color: '#B45309 !important' }} />}
+                      label="Erro de compilação"
+                      size="small"
+                      sx={{
+                        backgroundColor: '#FEF3C7',
+                        color: '#B45309',
+                        fontWeight: 700,
+                        fontSize: '0.75rem',
+                        borderRadius: '12px',
+                        px: 0.5,
+                        height: 24,
+                      }}
+                    />
+                  </Tooltip>
+                ) : isFalhaTecnica ? (
+                  <Tooltip title="Instabilidade técnica no ambiente de execução. A tentativa não foi pontuada." arrow>
+                    <Chip
+                      icon={<InfoOutlinedIcon sx={{ fontSize: '15px !important', color: '#475569 !important' }} />}
+                      label="Falha técnica"
+                      size="small"
+                      sx={{
+                        backgroundColor: '#F1F5F9',
+                        color: '#475569',
+                        fontWeight: 700,
+                        fontSize: '0.75rem',
+                        borderRadius: '12px',
+                        px: 0.5,
+                        height: 24,
+                      }}
+                    />
+                  </Tooltip>
+                ) : null}
               </Box>
 
               {/* Grid com Última tentativa e Casos aprovados */}
@@ -1084,42 +1367,80 @@ export default function CodeSubmissionPage() {
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem', mb: 0.5 }}>
                     Última tentativa
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#0F172A', fontSize: '1.85rem' }}>
-                    {formatScoreDisplay(notaObtida, pontosMax)}
-                  </Typography>
+                  {isNaoExecutado ? (
+                    <Tooltip title={isErroCompilacao ? "O código não compilou, portanto não recebeu nota." : "Instabilidade temporária no ambiente."} arrow>
+                      <Typography variant="h4" sx={{ fontWeight: 800, color: '#64748B', fontSize: '1.85rem' }}>
+                        —
+                      </Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: jaAtingiuNotaMaxima ? '#15803D' : '#0F172A', fontSize: '1.85rem' }}>
+                      {formatScoreDisplay(notaObtida, pontosMax)}
+                    </Typography>
+                  )}
                 </Box>
 
                 <Box>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem', mb: 0.5 }}>
                     Casos aprovados
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#0F172A', fontSize: '1.85rem' }}>
-                    {casosAprovadosAvaliacao} / {totalCasosAvaliacao}
-                  </Typography>
+                  {isNaoExecutado ? (
+                    <Tooltip title={isErroCompilacao ? "Casos de teste não executados por erro de compilação." : "Casos de teste não avaliados."} arrow>
+                      <Typography variant="h4" sx={{ fontWeight: 800, color: '#64748B', fontSize: '1.85rem' }}>
+                        —
+                      </Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: jaAtingiuNotaMaxima ? '#15803D' : '#0F172A', fontSize: '1.85rem' }}>
+                      {casosAprovadosAvaliacao} / {totalCasosAvaliacao}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
 
-              {/* Barra de Progresso Azul */}
-              <LinearProgress
-                variant="determinate"
-                value={percentAprovado}
-                sx={{
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: '#E2E8F0',
-                  '& .MuiLinearProgress-bar': {
-                    backgroundColor: '#0284C7',
-                    borderRadius: 4,
-                  },
-                }}
-              />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: 'block', textAlign: 'right', mt: 0.75, fontSize: '0.75rem' }}
-              >
-                {percentAprovado}% dos casos aprovados
-              </Typography>
+              {/* Barra de Progresso ou Mensagem Informativa de Não Executado */}
+              {isErroCompilacao ? (
+                <Tooltip title="Os casos de teste não foram executados porque o código C não compilou no GCC." arrow>
+                  <Box sx={{ mt: 1.5, p: 1.5, bgcolor: '#FFFBEB', borderRadius: 2, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <InfoOutlinedIcon sx={{ color: '#D97706', fontSize: 18, flexShrink: 0 }} />
+                    <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 500, fontSize: '0.78rem' }}>
+                      Casos de teste não executados por falha na compilação.
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : isFalhaTecnica ? (
+                <Tooltip title="A correção não pôde ser concluída por falha técnica. Esta tentativa não foi penalizada." arrow>
+                  <Box sx={{ mt: 1.5, p: 1.5, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <InfoOutlinedIcon sx={{ color: '#64748B', fontSize: 18, flexShrink: 0 }} />
+                    <Typography variant="caption" sx={{ color: '#475569', fontWeight: 500, fontSize: '0.78rem' }}>
+                      Casos de teste não avaliados por instabilidade técnica.
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : (
+                <>
+                  <LinearProgress
+                    variant="determinate"
+                    value={jaAtingiuNotaMaxima ? 100 : percentAprovado}
+                    sx={{
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: '#E2E8F0',
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: jaAtingiuNotaMaxima ? '#16A34A' : '#0284C7',
+                        borderRadius: 4,
+                      },
+                    }}
+                  />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', textAlign: 'right', mt: 0.75, fontSize: '0.75rem' }}
+                  >
+                    {jaAtingiuNotaMaxima ? '100' : percentAprovado}% dos casos aprovados
+                  </Typography>
+                </>
+              )}
 
               {/* Linha de Situação da Avaliação */}
               <Box
@@ -1140,11 +1461,11 @@ export default function CodeSubmissionPage() {
                 </Box>
 
                 <Chip
-                  label={isConcluida ? 'Concluída' : 'Em andamento'}
+                  label={isErroCompilacao ? 'Erro de compilação' : isFalhaTecnica ? 'Falha técnica' : isConcluida ? 'Concluída' : 'Em andamento'}
                   size="small"
                   sx={{
-                    backgroundColor: isConcluida ? '#DCFCE7' : '#E0F2FE',
-                    color: isConcluida ? '#15803D' : '#0284C7',
+                    backgroundColor: isErroCompilacao ? '#FEF3C7' : isFalhaTecnica ? '#F1F5F9' : isConcluida ? '#DCFCE7' : '#E0F2FE',
+                    color: isErroCompilacao ? '#B45309' : isFalhaTecnica ? '#475569' : isConcluida ? '#15803D' : '#0284C7',
                     fontWeight: 600,
                     fontSize: '0.75rem',
                     borderRadius: '12px',
@@ -1155,9 +1476,12 @@ export default function CodeSubmissionPage() {
               </Box>
 
               {/* Erro de Compilação se houver */}
-              {resultado?.status === 'ERRO_COMPILACAO' && (
-                <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+              {isErroCompilacao && (
+                <Alert severity="warning" sx={{ mt: 2, borderRadius: 2, border: '1px solid #FDE68A', bgcolor: '#FEF9ED' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#92400E', mb: 0.5, fontSize: '0.825rem' }}>
+                    Saída do compilador GCC:
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#78350F', display: 'block' }}>
                     {resultado.erroCompilacao || 'Erro de compilação no GCC.'}
                   </Typography>
                 </Alert>
@@ -1175,70 +1499,137 @@ export default function CodeSubmissionPage() {
               p: { xs: 2.5, sm: 3 },
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <ScienceIcon sx={{ color: '#0284C7', fontSize: 22 }} />
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', fontSize: '1.05rem' }}>
-                Casos de teste visíveis
-              </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ScienceIcon sx={{ color: '#0284C7', fontSize: 22 }} />
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', fontSize: '1.05rem' }}>
+                  Casos de teste visíveis
+                </Typography>
+              </Box>
+              {isNaoExecutado && (
+                <Tooltip
+                  title={
+                    isErroCompilacao
+                      ? "O código não compilou no GCC, portanto os casos de teste não foram executados."
+                      : "Casos de teste não avaliados devido a uma falha técnica."
+                  }
+                  arrow
+                >
+                  <Chip
+                    icon={<InfoOutlinedIcon sx={{ fontSize: '14px !important', color: '#64748B !important' }} />}
+                    label="Não executados"
+                    size="small"
+                    sx={{
+                      backgroundColor: '#F1F5F9',
+                      color: '#475569',
+                      fontWeight: 600,
+                      fontSize: '0.725rem',
+                      height: 24,
+                      border: '1px solid #CBD5E1',
+                    }}
+                  />
+                </Tooltip>
+              )}
             </Box>
 
-            {!hasSubmissoes ? (
-              /* Mockup Imagem 1: Tabela Limpa de Casos Visíveis */
-              <TableContainer
-                component={Paper}
-                variant="outlined"
-                sx={{ borderRadius: 2, borderColor: '#E2E8F0', overflow: 'hidden' }}
-              >
-                <Table size="small">
-                  <TableHead sx={{ backgroundColor: '#F8FAFC' }}>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 600, color: '#64748B', width: 60 }}>#</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#64748B' }}>Entrada</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#64748B' }}>Saída esperada</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {casosVisiveis.map((caso, index) => (
-                      <TableRow key={caso.uuid || index} hover>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: '50%',
-                              backgroundColor: '#E0F2FE',
-                              color: '#0284C7',
-                              fontWeight: 700,
-                              fontSize: '0.75rem',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            {caso.numero || index + 1}
-                          </Box>
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
-                          {formatCaseIO(caso.inputs)}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
-                          {formatCaseIO(caso.outputEsperado)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {casosVisiveis.length === 0 && (
+            {!hasTentativas || isRestrito ? (
+              /* Tabela Limpa de Casos Visíveis (0 tentativas ou Prova sob sigilo) */
+              <Box>
+                {isRestrito && (
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <InfoOutlinedIcon sx={{ fontSize: 18, color: '#2563EB', flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#1E40AF', fontSize: '0.8rem', lineHeight: 1.4 }}>
+                      Modo Prova: Os casos de teste abaixo são disponibilizados apenas para conferência da especificação da função. A validação individual dos testes será divulgada após o encerramento da prova.
+                    </Typography>
+                  </Box>
+                )}
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{ borderRadius: 2, borderColor: '#E2E8F0', overflow: 'hidden' }}
+                >
+                  <Table size="small">
+                    <TableHead sx={{ backgroundColor: '#F8FAFC' }}>
                       <TableRow>
-                        <TableCell colSpan={3} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                          Nenhum caso de teste visível configurado.
-                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600, color: '#64748B', width: 60 }}>#</TableCell>
+                        <TableCell sx={{ fontWeight: 600, color: '#64748B' }}>Entrada</TableCell>
+                        <TableCell sx={{ fontWeight: 600, color: '#64748B' }}>Saída esperada</TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {casosVisiveis.map((caso, index) => (
+                        <TableRow key={caso.uuid || index} hover>
+                          <TableCell>
+                            <Box
+                              sx={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: '50%',
+                                backgroundColor: '#E0F2FE',
+                                color: '#0284C7',
+                                fontWeight: 700,
+                                fontSize: '0.75rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              {caso.numero || index + 1}
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
+                            {formatCaseIO(caso.inputs)}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
+                            {formatCaseIO(caso.outputEsperado)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {casosVisiveis.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={3} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                            Nenhum caso de teste visível configurado.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             ) : (
-              /* Mockup Imagem 2: Acordeons de Casos Aprovados/Reprovados */
+              /* Mockup Imagem 2: Acordeons de Casos Aprovados/Reprovados/Não Executados */
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {isNaoExecutado && (
+                  <Tooltip
+                    title={
+                      isErroCompilacao
+                        ? "Os casos de teste não foram executados porque o código C não compilou no GCC."
+                        : "Os casos de teste não foram avaliados devido a uma falha técnica."
+                    }
+                    arrow
+                  >
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        mb: 0.5,
+                        bgcolor: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.25,
+                      }}
+                    >
+                      <InfoOutlinedIcon sx={{ fontSize: 18, color: '#64748B', flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.825rem', lineHeight: 1.4 }}>
+                        {isErroCompilacao
+                          ? 'Nenhum caso de teste foi executado porque o código continha erros de compilação (GCC). Corrija o código para validar a execução.'
+                          : 'Nenhum caso de teste foi avaliado devido a uma instabilidade temporária no ambiente de execução.'}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                )}
+
                 {casosVisiveis.map((caso, index) => {
                   const caseKey = caso.uuid || index;
                   const isExpanded = expandedCases[caseKey] ?? true;
@@ -1258,7 +1649,10 @@ export default function CodeSubmissionPage() {
 
                   const entradaStr = formatCaseIO(caso.inputs);
                   const esperadoStr = formatCaseIO(caso.outputEsperado);
-                  const obtidoStr = aprovado ? esperadoStr : '0';
+                  const obtidoStr = isNaoExecutado ? '—' : aprovado ? esperadoStr : '0';
+
+                  const borderColor = isNaoExecutado ? '#E2E8F0' : aprovado ? '#BBF7D0' : '#FECACA';
+                  const headerBgColor = isNaoExecutado ? '#F8FAFC' : aprovado ? '#F0FDF4' : '#FEF2F2';
 
                   return (
                     <Box
@@ -1267,7 +1661,7 @@ export default function CodeSubmissionPage() {
                         borderRadius: 2,
                         overflow: 'hidden',
                         border: '1px solid',
-                        borderColor: aprovado ? '#BBF7D0' : '#FECACA',
+                        borderColor: borderColor,
                       }}
                     >
                       {/* Barra de Título do Caso */}
@@ -1279,7 +1673,7 @@ export default function CodeSubmissionPage() {
                           justifyContent: 'space-between',
                           px: 2,
                           py: 1.25,
-                          backgroundColor: aprovado ? '#F0FDF4' : '#FEF2F2',
+                          backgroundColor: headerBgColor,
                           cursor: 'pointer',
                           userSelect: 'none',
                         }}
@@ -1307,9 +1701,33 @@ export default function CodeSubmissionPage() {
                           </Typography>
                         </Box>
 
-                        {/* Direita: Badge Aprovado/Reprovado + Chevron */}
+                        {/* Direita: Badge Aprovado/Reprovado/Não executado + Chevron */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {aprovado ? (
+                          {isNaoExecutado ? (
+                            <Tooltip
+                              title={
+                                isErroCompilacao
+                                  ? 'Caso de teste não executado devido a erro de compilação no GCC.'
+                                  : 'Caso de teste não avaliado devido a falha técnica.'
+                              }
+                              arrow
+                            >
+                              <Chip
+                                icon={<InfoOutlinedIcon sx={{ fontSize: '15px !important', color: '#64748B !important' }} />}
+                                label="Não executado"
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#F1F5F9',
+                                  color: '#475569',
+                                  fontWeight: 600,
+                                  fontSize: '0.75rem',
+                                  borderRadius: '12px',
+                                  border: '1px solid #CBD5E1',
+                                  height: 24,
+                                }}
+                              />
+                            </Tooltip>
+                          ) : aprovado ? (
                             <Chip
                               icon={<CheckCircleIcon sx={{ fontSize: '15px !important', color: '#16A34A !important' }} />}
                               label="Aprovado"
@@ -1354,7 +1772,7 @@ export default function CodeSubmissionPage() {
                             gridTemplateColumns: 'repeat(3, 1fr)',
                             gap: 2,
                             borderTop: '1px solid',
-                            borderColor: aprovado ? '#BBF7D0' : '#FECACA',
+                            borderColor: borderColor,
                           }}
                         >
                           <Box>
@@ -1379,16 +1797,38 @@ export default function CodeSubmissionPage() {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
                               Obtido
                             </Typography>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontFamily: 'monospace',
-                                fontWeight: 700,
-                                color: aprovado ? '#0F172A' : '#DC2626',
-                              }}
-                            >
-                              {obtidoStr}
-                            </Typography>
+                            {isNaoExecutado ? (
+                              <Tooltip
+                                title={
+                                  isErroCompilacao
+                                    ? 'O código não compilou no GCC, portanto nenhuma saída foi produzida.'
+                                    : 'Não avaliado devido a falha técnica.'
+                                }
+                                arrow
+                              >
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontFamily: 'monospace',
+                                    fontWeight: 600,
+                                    color: '#64748B',
+                                  }}
+                                >
+                                  — (Não executado)
+                                </Typography>
+                              </Tooltip>
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 700,
+                                  color: aprovado ? '#0F172A' : '#DC2626',
+                                }}
+                              >
+                                {obtidoStr}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                       </Collapse>
@@ -1414,11 +1854,11 @@ export default function CodeSubmissionPage() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <HistoryIcon sx={{ color: '#0284C7', fontSize: 22 }} />
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', fontSize: '1.05rem' }}>
-            Histórico de tentativas desta função {!hasSubmissoes ? '(0)' : ''}
+            Histórico de tentativas desta função {!hasTentativas ? '(0)' : ''}
           </Typography>
         </Box>
 
-        {!hasSubmissoes ? (
+        {!hasTentativas ? (
           /* Mockup Imagem 1: Banner Informativo de 0 Tentativas */
           <Box
             sx={{
@@ -1457,7 +1897,8 @@ export default function CodeSubmissionPage() {
               </TableHead>
               <TableBody>
                 {historicoTentativas.map((tentativa) => {
-                  const isAvaliada = tentativa.status === 'AVALIADA' || tentativa.status === 'avaliado';
+                  const tentIsRestrito = tentativa.status === 'ENVIO_REGISTRADO' || (isProva && tentativa.nota == null && !tentativa.falhaTecnica);
+                  const isAvaliada = (tentativa.status === 'AVALIADA' || tentativa.status === 'avaliado') && !tentIsRestrito;
                   const isErroCompilacao = tentativa.status === 'ERRO_COMPILACAO';
 
                   return (
@@ -1469,7 +1910,21 @@ export default function CodeSubmissionPage() {
                         {formatTimestamp(tentativa.dataSubmissao)}
                       </TableCell>
                       <TableCell>
-                        {isAvaliada && (
+                        {tentIsRestrito ? (
+                          <Chip
+                            icon={<AccessTimeRoundedIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />}
+                            label="Recebida"
+                            size="small"
+                            sx={{
+                              backgroundColor: '#334E68',
+                              color: '#FFFFFF',
+                              fontWeight: 700,
+                              borderRadius: '16px',
+                              px: 0.5,
+                              height: 24,
+                            }}
+                          />
+                        ) : isAvaliada ? (
                           <Chip
                             icon={<CheckCircleIcon sx={{ fontSize: '15px !important', color: '#15803D !important' }} />}
                             label="Avaliada"
@@ -1483,8 +1938,7 @@ export default function CodeSubmissionPage() {
                               height: 24,
                             }}
                           />
-                        )}
-                        {isErroCompilacao && (
+                        ) : isErroCompilacao ? (
                           <Chip
                             icon={<CancelIcon sx={{ fontSize: '15px !important', color: '#B91C1C !important' }} />}
                             label="Erro de compilação"
@@ -1498,8 +1952,7 @@ export default function CodeSubmissionPage() {
                               height: 24,
                             }}
                           />
-                        )}
-                        {!isAvaliada && !isErroCompilacao && (
+                        ) : (
                           <Chip
                             label={tentativa.status}
                             size="small"
@@ -1514,17 +1967,17 @@ export default function CodeSubmissionPage() {
                           />
                         )}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: isErroCompilacao ? '#94A3B8' : '#0F172A' }}>
-                        {isErroCompilacao ? '—' : formatScoreDisplay(tentativa.nota, tentativa.notaMaxima || pontosMax)}
+                      <TableCell sx={{ fontWeight: 600, color: isErroCompilacao ? '#94A3B8' : tentIsRestrito ? '#64748B' : '#0F172A' }}>
+                        {tentIsRestrito ? 'Sob sigilo' : isErroCompilacao ? '—' : formatScoreDisplay(tentativa.nota, tentativa.notaMaxima || pontosMax)}
                       </TableCell>
-                      <TableCell sx={{ color: isErroCompilacao ? '#94A3B8' : '#0F172A', fontWeight: 500 }}>
-                        {isErroCompilacao ? '—' : `${tentativa.casosAprovados} / ${tentativa.totalCasos || totalCasosAvaliacao}`}
+                      <TableCell sx={{ color: isErroCompilacao ? '#94A3B8' : tentIsRestrito ? '#64748B' : '#0F172A', fontWeight: 500 }}>
+                        {tentIsRestrito ? 'Sob sigilo' : isErroCompilacao ? '—' : `${tentativa.casosAprovados ?? 0} / ${tentativa.totalCasos || totalCasosAvaliacao}`}
                       </TableCell>
                       <TableCell>
                         <Button
                           size="small"
                           startIcon={<VisibilityIcon sx={{ fontSize: 16 }} />}
-                          onClick={() => handleOpenDetalhes(tentativa)}
+                          onClick={() => navigate(`/aluno/submissoes/${tentativa.uuid}`)}
                           sx={{
                             color: '#0284C7',
                             textTransform: 'none',

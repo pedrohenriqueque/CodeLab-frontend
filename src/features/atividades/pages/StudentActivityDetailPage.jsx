@@ -42,6 +42,7 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
 import useActivityProgress from '../hooks/useActivityProgress';
+import { getSubmissoes } from '../../submissoes/api';
 
 // ─── Formatters & Helpers ───────────────────────────────────────────────────
 
@@ -68,11 +69,12 @@ function formatScore(val) {
 }
 
 function deriveFuncaoStatus(prog, funcao, isProva) {
-  const pontosMax = funcao.peso ?? funcao.pontos ?? 10;
-  if (!prog || prog.tentativasUsadas === 0) return 'nao_iniciada';
+  const pontosMax = Number(funcao.peso ?? funcao.pontos ?? 10);
+  const temEnvio = Boolean(prog && (prog.enviada || (prog.tentativasUsadas ?? 0) > 0));
+  if (!temEnvio) return 'nao_iniciada';
   if (isProva) return 'enviada';
-  const nota = prog.melhorNota ?? 0;
-  if (nota >= pontosMax) return 'concluida';
+  const nota = Number(prog.melhorNota ?? 0);
+  if (prog.aprovada || (pontosMax > 0 && nota >= pontosMax)) return 'concluida';
   return 'em_andamento';
 }
 
@@ -122,17 +124,50 @@ function FuncaoItemCard({ funcao, prog, uuid, navigate, isProva }) {
   const tentativas = prog?.tentativasUsadas ?? 0;
   const melhorNota = prog?.melhorNota ?? 0;
   const status = deriveFuncaoStatus(prog, funcao, isProva);
-  const pontosMax = funcao.peso ?? funcao.pontos ?? 10;
+  const pontosMax = Number(funcao.peso ?? funcao.pontos ?? 10);
   const diffConfig = getDifficultyConfig(funcao.dificuldade);
 
-  const handleAction = () => {
+  const handleAction = async (e) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
+    if (status === 'concluida' || status === 'enviada') {
+      let targetSubUuid = prog?.melhorTentativaUuid || prog?.ultimaTentativaUuid;
+      if (!targetSubUuid) {
+        try {
+          const subs = await getSubmissoes(targetFuncUuid, null, uuid);
+          if (Array.isArray(subs) && subs.length > 0) {
+            const subsDestaFuncao = subs.filter((s) => {
+              const sFunc = s.funcaoUuid || s.funcao_atividade_uuid || s.funcao_uuid;
+              const matchFunc = sFunc && String(sFunc).toLowerCase() === String(targetFuncUuid).toLowerCase();
+              const matchAtiv = !uuid || !s.atividadeUuid || String(s.atividadeUuid).toLowerCase() === String(uuid).toLowerCase();
+              return matchFunc && matchAtiv;
+            });
+            if (subsDestaFuncao.length > 0) {
+              const maxSub = subsDestaFuncao.find(
+                (s) => s.nota != null && Number(s.nota) >= pontosMax
+              );
+              targetSubUuid = (maxSub || subsDestaFuncao[0]).uuid;
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao buscar submissões para redirecionamento:', err);
+        }
+      }
+      if (targetSubUuid) {
+        navigate(`/aluno/submissoes/${targetSubUuid}`);
+        return;
+      }
+    }
     navigate(`/aluno/atividades/${uuid}/funcao/${targetFuncUuid}/submeter`);
   };
 
   return (
     <Card
       elevation={0}
+      onClick={handleAction}
       sx={{
+        cursor: 'pointer',
         mb: 2,
         p: { xs: 2, sm: 2.25, md: '20px 24px' },
         borderRadius: '14px',
@@ -440,7 +475,7 @@ function FuncaoItemCard({ funcao, prog, uuid, navigate, isProva }) {
                 },
               }}
             >
-              Ver submissão
+              Ver resultado
             </Button>
           )}
 
@@ -526,7 +561,9 @@ export default function StudentActivityDetailPage() {
   let pontosObtidos = 0;
   for (const f of funcoes) {
     const targetFuncUuid = f.funcaoUuid || f.uuid;
-    const prog = progresso.find((p) => p.funcaoUuid === targetFuncUuid);
+    const prog = progresso.find(
+      (p) => String(p.funcaoUuid || p.funcaoAtividadeUuid || p.funcao_atividade_uuid).toLowerCase() === String(targetFuncUuid).toLowerCase()
+    );
     if (!isProva && prog && prog.tentativasUsadas > 0) {
       pontosObtidos += prog.melhorNota ?? 0;
     }
@@ -770,7 +807,9 @@ export default function StudentActivityDetailPage() {
         <Box>
           {funcoes.map((funcao) => {
             const targetFuncUuid = funcao.funcaoUuid || funcao.uuid;
-            const prog = progresso.find((p) => p.funcaoUuid === targetFuncUuid);
+            const prog = progresso.find(
+              (p) => String(p.funcaoUuid || p.funcaoAtividadeUuid || p.funcao_atividade_uuid).toLowerCase() === String(targetFuncUuid).toLowerCase()
+            );
             return (
               <FuncaoItemCard
                 key={targetFuncUuid}

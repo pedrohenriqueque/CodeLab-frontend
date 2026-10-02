@@ -9,9 +9,11 @@ export default function useActivityProgress(activityUuid) {
       const funcoes = await getProgressoAtividade(activityUuid);
       setProgresso(funcoes.map((funcao) => ({
         ...funcao,
-        funcaoUuid: funcao.funcaoAtividadeUuid,
-        tentativasUsadas: funcao.totalTentativas != null ? Number(funcao.totalTentativas) : (funcao.enviada ? 1 : 0),
-        melhorNota: funcao.melhorNota == null ? null : Number(funcao.melhorNota),
+        funcaoUuid: funcao.funcaoAtividadeUuid || funcao.funcao_atividade_uuid,
+        tentativasUsadas: funcao.totalTentativas != null ? Number(funcao.totalTentativas) : (funcao.total_tentativas != null ? Number(funcao.total_tentativas) : (funcao.enviada ? 1 : 0)),
+        melhorNota: funcao.melhorNota == null ? (funcao.melhor_nota == null ? null : Number(funcao.melhor_nota)) : Number(funcao.melhorNota),
+        melhorTentativaUuid: funcao.melhorTentativaUuid || funcao.melhor_tentativa_uuid || null,
+        ultimaTentativaUuid: funcao.ultimaTentativaUuid || funcao.ultima_tentativa_uuid || null,
       })));
     }
     catch { setProgresso([]); }

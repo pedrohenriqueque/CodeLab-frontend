@@ -6,13 +6,16 @@ import httpClient from '../../shared/api/httpClient';
 
 function adaptSubmission(submissao, index, total) {
   const hasResult = submissao.nota !== null && submissao.nota !== undefined;
-  const totalCasos = submissao.total_casos ?? submissao.totalCasos ?? 0;
-  const casosAprovados = submissao.casos_aprovados ?? submissao.casosAprovados ?? 0;
+  const rawTotalCasos = submissao.total_casos ?? submissao.totalCasos;
+  const rawCasosAprovados = submissao.casos_aprovados ?? submissao.casosAprovados;
+  const totalCasos = rawTotalCasos != null ? Number(rawTotalCasos) : null;
+  const casosAprovados = rawCasosAprovados != null ? Number(rawCasosAprovados) : null;
   const notaMaxima = submissao.nota_maxima ?? submissao.notaMaxima;
   const nota = submissao.nota;
   const falhaTecnica = submissao.falha_tecnica ?? submissao.falhaTecnica ?? false;
 
-  let tentativaNumero = submissao.tentativaNumero;
+  const rawTentativaNumero = submissao.tentativa_numero ?? submissao.tentativaNumero;
+  let tentativaNumero = rawTentativaNumero != null ? Number(rawTentativaNumero) : null;
   if (tentativaNumero == null) {
     if (total != null && index != null) {
       tentativaNumero = total - index;
@@ -36,8 +39,8 @@ function adaptSubmission(submissao, index, total) {
     pontosTotal: notaMaxima == null ? undefined : Number(notaMaxima),
     notaMaxima: notaMaxima == null ? 10 : Number(notaMaxima),
     nota: nota == null ? null : Number(nota),
-    totalCasos: Number(totalCasos),
-    casosAprovados: Number(casosAprovados),
+    totalCasos,
+    casosAprovados,
     falhaTecnica,
     tentativaNumero,
     erroCompilacao: submissao.erro_compilacao || submissao.erroCompilacao || (submissao.status === 'ERRO_COMPILACAO' ? (submissao.mensagemErro || 'Erro durante a compilação do código C.') : null),
@@ -46,8 +49,8 @@ function adaptSubmission(submissao, index, total) {
       ? {
           nota: nota == null ? 0 : Number(nota),
           pontosMaximo: notaMaxima == null ? 0 : Number(notaMaxima),
-          totalCasos: Number(totalCasos),
-          casosPassados: Number(casosAprovados),
+          totalCasos: totalCasos ?? 0,
+          casosPassados: casosAprovados ?? 0,
           falhaTecnica,
         }
       : null,
@@ -65,7 +68,19 @@ export async function getSubmissoes(funcaoUuid, status, atividadeUuid, alunoUuid
     params: Object.keys(params).length ? params : undefined,
   });
   const list = Array.isArray(data) ? data : [];
-  return list.map((item, index) => adaptSubmission(item, index, list.length));
+  const countsByFunction = {};
+  for (const item of list) {
+    const fId = item.funcao_atividade_uuid || item.funcaoAtividadeUuid || item.funcaoUuid || 'default';
+    countsByFunction[fId] = (countsByFunction[fId] || 0) + 1;
+  }
+  const seenByFunction = {};
+  return list.map((item) => {
+    const fId = item.funcao_atividade_uuid || item.funcaoAtividadeUuid || item.funcaoUuid || 'default';
+    const totalFunc = countsByFunction[fId] || 1;
+    const idxFunc = seenByFunction[fId] || 0;
+    seenByFunction[fId] = idxFunc + 1;
+    return adaptSubmission(item, idxFunc, totalFunc);
+  });
 }
 
 export async function getSubmissao(uuid) {
