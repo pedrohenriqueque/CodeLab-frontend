@@ -53,6 +53,9 @@ import { getSubmissao, getSubmissoes } from '../api';
 import ReadOnlyCodeViewer from '../components/ReadOnlyCodeViewer';
 import { formatScore, formatSubmissionDate } from '../components/submissionDisplay';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import TestCaseInputs from '../../../shared/components/TestCaseInputs';
+import NoVisibleTestCasesNotice from '../../../shared/components/NoVisibleTestCasesNotice';
+import { formatCapturedReturn, formatTestCaseValue } from '../../../shared/components/testCaseValues';
 
 const cardStyle = {
   borderColor: '#E2E8F0',
@@ -60,9 +63,6 @@ const cardStyle = {
   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
   backgroundColor: '#FFFFFF',
 };
-
-const displayValue = (value) =>
-  value == null ? '—' : typeof value === 'string' ? value : JSON.stringify(value);
 
 function SectionTitle({ icon, children, action }) {
   return (
@@ -130,9 +130,9 @@ function MetadataItem({ icon, label, value }) {
   );
 }
 
-function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) {
+function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao, parametros }) {
   const passed = Boolean(testCase.aprovado);
-  const isNeutral = Boolean(isNaoExecutado || testCase.naoExecutado);
+  const isNeutral = Boolean(isNaoExecutado || testCase.naoExecutado || testCase.statusRetorno === 'NAO_EXECUTADO');
   return (
     <Accordion
       disableGutters
@@ -179,7 +179,9 @@ function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) 
             title={
               isErroCompilacao
                 ? 'Caso de teste não executado devido a erro de compilação no GCC.'
-                : 'Caso de teste não avaliado devido a falha técnica.'
+                : testCase.statusRetorno === 'NAO_EXECUTADO'
+                  ? 'Caso não executado porque uma execução anterior foi interrompida.'
+                  : 'Caso de teste não avaliado devido a falha técnica.'
             }
             arrow
           >
@@ -202,7 +204,7 @@ function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) 
           <Chip
             size="small"
             icon={passed ? <CheckCircleRoundedIcon /> : <ErrorRoundedIcon />}
-            label={passed ? 'Aprovado' : 'Reprovado'}
+            label={testCase.statusRetorno === 'ERRO_EXECUCAO' ? 'Erro de execução' : passed ? 'Aprovado' : 'Reprovado'}
             sx={{
               height: 24,
               bgcolor: passed ? '#ECFDF5' : '#FEF2F2',
@@ -216,12 +218,12 @@ function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) 
         )}
       </AccordionSummary>
       <AccordionDetails sx={{ px: 2, py: 1.25, bgcolor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5 }}>
           <Box>
             <Typography sx={{ color: '#64748B', fontSize: '0.7rem', fontWeight: 600, mb: 0.25 }}>
               Entrada(s)
             </Typography>
-            <Typography
+            <Box
               sx={{
                 fontFamily: 'Consolas, monospace',
                 fontSize: '0.78rem',
@@ -233,8 +235,8 @@ function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) 
                 overflowWrap: 'anywhere',
               }}
             >
-              {displayValue(testCase.entradas)}
-            </Typography>
+              <TestCaseInputs entradas={testCase.entradas} parametros={parametros} />
+            </Box>
           </Box>
           <Box>
             <Typography sx={{ color: '#64748B', fontSize: '0.7rem', fontWeight: 600, mb: 0.25 }}>
@@ -253,7 +255,13 @@ function VisibleTestCase({ testCase, index, isNaoExecutado, isErroCompilacao }) 
                 overflowWrap: 'anywhere',
               }}
             >
-              {displayValue(testCase.retornoEsperado)}
+              {formatTestCaseValue(testCase.retornoEsperado)}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography sx={{ color: '#64748B', fontSize: '0.7rem', fontWeight: 600, mb: 0.25 }}>Retorno Obtido</Typography>
+            <Typography sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: passed ? '#16A34A' : '#0F172A', bgcolor: '#fff', p: 0.75, borderRadius: 1.5, border: '1px solid #E2E8F0', overflowWrap: 'anywhere' }}>
+              {formatCapturedReturn(testCase)}
             </Typography>
           </Box>
         </Box>
@@ -275,7 +283,7 @@ export default function StudentSubmissionDetailPage() {
 
   useEffect(() => {
     let active = true;
-    getSubmissao(uuid)
+    getSubmissao(uuid, { includeParameters: true })
       .then(async (item) => {
         if (!active) return;
         let finalItem = item;
@@ -816,13 +824,12 @@ export default function StudentSubmissionDetailPage() {
                       <VisibleTestCase
                         key={testCase.casoTesteAtividadeUuid || index}
                         testCase={testCase}
+                        parametros={submissao.parametros}
                         index={index}
                       />
                     ))
                   ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ p: 1, fontStyle: 'italic' }}>
-                      Não há casos de teste públicos disponíveis para exibição direta.
-                    </Typography>
+                    <NoVisibleTestCasesNotice />
                   )}
                 </Box>
               </Card>
@@ -871,6 +878,7 @@ export default function StudentSubmissionDetailPage() {
                       <VisibleTestCase
                         key={testCase.casoTesteAtividadeUuid || index}
                         testCase={testCase}
+                        parametros={submissao.parametros}
                         index={index}
                         isNaoExecutado={true}
                         isErroCompilacao={true}
@@ -899,6 +907,7 @@ export default function StudentSubmissionDetailPage() {
                       <VisibleTestCase
                         key={testCase.casoTesteAtividadeUuid || index}
                         testCase={testCase}
+                        parametros={submissao.parametros}
                         index={index}
                         isNaoExecutado={true}
                         isErroCompilacao={false}

@@ -78,6 +78,9 @@ import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 import { getFuncao, getAtividade, getFuncoesAtividade } from '../../atividades/api';
 import { createSubmissao, getSubmissoes } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import TestCaseInputs from '../../../shared/components/TestCaseInputs';
+import NoVisibleTestCasesNotice from '../../../shared/components/NoVisibleTestCasesNotice';
+import { formatCapturedReturn, formatTestCaseValue } from '../../../shared/components/testCaseValues';
 
 // ─── Helpers de Formatação ──────────────────────────────────────────────────
 
@@ -121,31 +124,6 @@ function formatTimestamp(isoString) {
   const hours = pad(d.getHours());
   const minutes = pad(d.getMinutes());
   return `${day}/${month}/${year}, ${hours}:${minutes}`;
-}
-
-function formatCaseIO(val) {
-  if (val === null || val === undefined) return '—';
-  if (typeof val === 'object') {
-    if (Array.isArray(val)) {
-      return `[${val.join(', ')}]`;
-    }
-    if ('retorno' in val) {
-      const ret = val.retorno;
-      return Array.isArray(ret) ? `[${ret.join(', ')}]` : String(ret);
-    }
-    if ('valor' in val) {
-      const v = val.valor;
-      return Array.isArray(v) ? `[${v.join(', ')}]` : String(v);
-    }
-    const keys = Object.keys(val);
-    if (keys.length === 1) {
-      const item = val[keys[0]];
-      return Array.isArray(item) ? `[${item.join(', ')}]` : String(item);
-    }
-    const parts = Object.values(val).map((v) => (Array.isArray(v) ? `[${v.join(', ')}]` : String(v)));
-    return parts.length === 1 ? parts[0] : parts.join(', ');
-  }
-  return String(val);
 }
 
 function cType(type) {
@@ -679,7 +657,7 @@ export default function CodeSubmissionPage() {
   const funcName = funcao?.nome || funcao?.nomeFuncao || funcao?.nome_funcao || 'funcao';
 
   // Cálculos do card de resultado ativo
-  const totalCasosAvaliacao = resultado?.totalCasos || casosVisiveis.length || 2;
+  const totalCasosAvaliacao = resultado?.totalCasos ?? null;
   const casosAprovadosAvaliacao = resultado?.casosAprovados ?? 0;
   const notaObtida = resultado?.nota;
   const percentAprovado = totalCasosAvaliacao > 0 ? Math.round((casosAprovadosAvaliacao / totalCasosAvaliacao) * 100) : 0;
@@ -1392,7 +1370,7 @@ export default function CodeSubmissionPage() {
                     </Tooltip>
                   ) : (
                     <Typography variant="h4" sx={{ fontWeight: 800, color: jaAtingiuNotaMaxima ? '#15803D' : '#0F172A', fontSize: '1.85rem' }}>
-                      {casosAprovadosAvaliacao} / {totalCasosAvaliacao}
+                      {totalCasosAvaliacao == null ? '—' : `${casosAprovadosAvaliacao} / ${totalCasosAvaliacao}`}
                     </Typography>
                   )}
                 </Box>
@@ -1532,7 +1510,7 @@ export default function CodeSubmissionPage() {
               )}
             </Box>
 
-            {!hasTentativas || isRestrito ? (
+            {casosVisiveis.length === 0 ? <NoVisibleTestCasesNotice /> : !hasTentativas || isRestrito ? (
               /* Tabela Limpa de Casos Visíveis (0 tentativas ou Prova sob sigilo) */
               <Box>
                 {isRestrito && (
@@ -1578,20 +1556,13 @@ export default function CodeSubmissionPage() {
                             </Box>
                           </TableCell>
                           <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
-                            {formatCaseIO(caso.inputs)}
+                            <TestCaseInputs entradas={caso.entradas ?? caso.inputs} parametros={funcao.parametros} />
                           </TableCell>
                           <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A' }}>
-                            {formatCaseIO(caso.outputEsperado)}
+                            {formatTestCaseValue(caso.retornoEsperado ?? caso.outputEsperado)}
                           </TableCell>
                         </TableRow>
                       ))}
-                      {casosVisiveis.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={3} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                            Nenhum caso de teste visível configurado.
-                          </TableCell>
-                        </TableRow>
-                      )}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1634,25 +1605,16 @@ export default function CodeSubmissionPage() {
                   const caseKey = caso.uuid || index;
                   const isExpanded = expandedCases[caseKey] ?? true;
 
-                  // Determinar se o caso foi aprovado
-                  let aprovado = false;
-                  if (resultado?.status === 'AVALIADA' || resultado?.status === 'avaliado') {
-                    if (resultado.resultadosCasos && Array.isArray(resultado.resultadosCasos)) {
-                      const match = resultado.resultadosCasos.find(
-                        (rc) => rc.casoTesteAtividadeUuid === caso.uuid || rc.caso_uuid === caso.uuid
-                      );
-                      aprovado = match ? match.aprovado : index < casosAprovadosAvaliacao;
-                    } else {
-                      aprovado = index < casosAprovadosAvaliacao;
-                    }
-                  }
+                  const caseResult = resultado?.resultadosCasos?.find(
+                    (rc) => rc.casoTesteAtividadeUuid === caso.uuid || rc.caso_uuid === caso.uuid
+                  );
+                  const aprovado = caseResult?.aprovado === true;
+                  const caseNotExecuted = isNaoExecutado || caseResult?.statusRetorno === 'NAO_EXECUTADO';
 
-                  const entradaStr = formatCaseIO(caso.inputs);
-                  const esperadoStr = formatCaseIO(caso.outputEsperado);
-                  const obtidoStr = isNaoExecutado ? '—' : aprovado ? esperadoStr : '0';
+                  const esperadoStr = formatTestCaseValue(caso.retornoEsperado ?? caso.outputEsperado);
 
-                  const borderColor = isNaoExecutado ? '#E2E8F0' : aprovado ? '#BBF7D0' : '#FECACA';
-                  const headerBgColor = isNaoExecutado ? '#F8FAFC' : aprovado ? '#F0FDF4' : '#FEF2F2';
+                  const borderColor = caseNotExecuted ? '#E2E8F0' : aprovado ? '#BBF7D0' : '#FECACA';
+                  const headerBgColor = caseNotExecuted ? '#F8FAFC' : aprovado ? '#F0FDF4' : '#FEF2F2';
 
                   return (
                     <Box
@@ -1703,12 +1665,14 @@ export default function CodeSubmissionPage() {
 
                         {/* Direita: Badge Aprovado/Reprovado/Não executado + Chevron */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {isNaoExecutado ? (
+                          {caseNotExecuted ? (
                             <Tooltip
                               title={
                                 isErroCompilacao
                                   ? 'Caso de teste não executado devido a erro de compilação no GCC.'
-                                  : 'Caso de teste não avaliado devido a falha técnica.'
+                                  : caseResult?.statusRetorno === 'NAO_EXECUTADO'
+                                    ? 'Caso não executado porque uma execução anterior foi interrompida.'
+                                    : 'Caso de teste não avaliado devido a falha técnica.'
                               }
                               arrow
                             >
@@ -1744,7 +1708,7 @@ export default function CodeSubmissionPage() {
                           ) : (
                             <Chip
                               icon={<CancelIcon sx={{ fontSize: '15px !important', color: '#DC2626 !important' }} />}
-                              label="Reprovado"
+                              label={caseResult?.statusRetorno === 'ERRO_EXECUCAO' ? 'Erro de execução' : 'Reprovado'}
                               size="small"
                               sx={{
                                 backgroundColor: '#FEE2E2',
@@ -1769,7 +1733,7 @@ export default function CodeSubmissionPage() {
                             backgroundColor: '#FFFFFF',
                             p: 2,
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
                             gap: 2,
                             borderTop: '1px solid',
                             borderColor: borderColor,
@@ -1779,9 +1743,9 @@ export default function CodeSubmissionPage() {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
                               Entrada
                             </Typography>
-                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#0F172A' }}>
-                              {entradaStr}
-                            </Typography>
+                            <Box sx={{ fontSize: '0.875rem', fontFamily: 'monospace', fontWeight: 700, color: '#0F172A' }}>
+                              <TestCaseInputs entradas={caso.entradas ?? caso.inputs} parametros={funcao.parametros} />
+                            </Box>
                           </Box>
 
                           <Box>
@@ -1797,12 +1761,14 @@ export default function CodeSubmissionPage() {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
                               Obtido
                             </Typography>
-                            {isNaoExecutado ? (
+                            {caseNotExecuted ? (
                               <Tooltip
                                 title={
                                   isErroCompilacao
                                     ? 'O código não compilou no GCC, portanto nenhuma saída foi produzida.'
-                                    : 'Não avaliado devido a falha técnica.'
+                                    : caseResult?.statusRetorno === 'NAO_EXECUTADO'
+                                      ? 'Uma execução anterior foi interrompida.'
+                                      : 'Não avaliado devido a falha técnica.'
                                 }
                                 arrow
                               >
@@ -1818,16 +1784,7 @@ export default function CodeSubmissionPage() {
                                 </Typography>
                               </Tooltip>
                             ) : (
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  fontFamily: 'monospace',
-                                  fontWeight: 700,
-                                  color: aprovado ? '#0F172A' : '#DC2626',
-                                }}
-                              >
-                                {obtidoStr}
-                              </Typography>
+                              <Typography variant="body2" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere', color: aprovado ? '#0F172A' : '#DC2626' }}>{formatCapturedReturn(caseResult)}</Typography>
                             )}
                           </Box>
                         </Box>
@@ -1971,7 +1928,7 @@ export default function CodeSubmissionPage() {
                         {tentIsRestrito ? 'Sob sigilo' : isErroCompilacao ? '—' : formatScoreDisplay(tentativa.nota, tentativa.notaMaxima || pontosMax)}
                       </TableCell>
                       <TableCell sx={{ color: isErroCompilacao ? '#94A3B8' : tentIsRestrito ? '#64748B' : '#0F172A', fontWeight: 500 }}>
-                        {tentIsRestrito ? 'Sob sigilo' : isErroCompilacao ? '—' : `${tentativa.casosAprovados ?? 0} / ${tentativa.totalCasos || totalCasosAvaliacao}`}
+                        {tentIsRestrito ? 'Sob sigilo' : isErroCompilacao || tentativa.totalCasos == null ? '—' : `${tentativa.casosAprovados ?? 0} / ${tentativa.totalCasos}`}
                       </TableCell>
                       <TableCell>
                         <Button

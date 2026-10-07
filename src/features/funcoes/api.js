@@ -65,6 +65,24 @@ export async function getCasosTeste(funcaoUuid) {
   return (Array.isArray(data) ? data : []).map(adaptCasoTeste);
 }
 
+export function getFunctionTestCaseCount(funcao) {
+  const total = funcao.totalCasosTeste ?? funcao.total_casos_teste;
+  if (total != null) return Number(total);
+  const casos = funcao.casosTeste ?? funcao.casos_teste;
+  return Array.isArray(casos) ? casos.length : undefined;
+}
+
+export async function getCasosParaAtividade(funcao) {
+  const existentes = funcao.casosTeste ?? funcao.casos_teste;
+  const casos = Array.isArray(existentes) && existentes.length
+    ? existentes.map(adaptCasoTeste)
+    : await getCasosTeste(funcao.uuid);
+  if (!casos.length) {
+    throw new Error('Cadastre ao menos um caso de teste na função antes de adicioná-la à atividade.');
+  }
+  return casos;
+}
+
 export async function createCasosTeste(funcaoUuid, body) {
   const { data } = await httpClient.post(`/api/funcoes/${funcaoUuid}/casos`, body);
   return adaptCasoTeste(data);
@@ -78,4 +96,3 @@ export async function updateCasoTeste(casoUuid, body) {
 export async function deleteCasoTeste(casoUuid) {
   await httpClient.delete(`/api/casos/${casoUuid}`);
 }
-

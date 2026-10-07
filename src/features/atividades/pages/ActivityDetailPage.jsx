@@ -49,6 +49,8 @@ import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
+import TestCaseInputs from '../../../shared/components/TestCaseInputs';
+import { formatTestCaseValue } from '../../../shared/components/testCaseValues';
 import { encerrarAtividade, deleteAtividade, updateAtividade } from '../api';
 import { getSubmissoes } from '../../submissoes/api';
 import { useTurmaContext } from '../../turmas/context/TurmaContext';
@@ -1009,12 +1011,10 @@ export default function ActivityDetailPage() {
                                     )}
                                   </TableCell>
                                   <TableCell sx={{ py: 1.2, fontFamily: 'monospace', fontSize: '0.8125rem', color: 'text.primary' }}>
-                                    {typeof caso.inputs === 'object' ? JSON.stringify(caso.inputs) : String(caso.inputs ?? '-')}
+                                    <TestCaseInputs entradas={caso.entradas ?? caso.inputs} parametros={funcao.parametros} />
                                   </TableCell>
                                   <TableCell sx={{ py: 1.2, fontFamily: 'monospace', fontSize: '0.8125rem', color: 'text.primary' }}>
-                                    {typeof caso.outputEsperado === 'object'
-                                      ? JSON.stringify(caso.outputEsperado)
-                                      : String(caso.outputEsperado ?? caso.retornoEsperado ?? '-')}
+                                    {formatTestCaseValue(caso.retornoEsperado ?? caso.outputEsperado)}
                                   </TableCell>
                                   <TableCell sx={{ py: 1.2, color: 'text.secondary', fontSize: '0.8125rem' }}>
                                     {caso.descricao || '-'}

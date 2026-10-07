@@ -19,8 +19,9 @@ import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import { getSubmissao } from '../api';
 import ReadOnlyCodeViewer from '../components/ReadOnlyCodeViewer';
 import { formatScore, formatSubmissionDate, statusInfo } from '../components/submissionDisplay';
+import TestCaseInputs from '../../../shared/components/TestCaseInputs';
+import { formatCapturedReturn, formatTestCaseValue } from '../../../shared/components/testCaseValues';
 
-const displayValue = (value) => value == null ? '—' : typeof value === 'string' ? value : JSON.stringify(value);
 const initials = (name) => name?.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
 const cardStyle = { borderColor: '#DFE7F4', borderRadius: 2, boxShadow: '0 4px 18px rgba(25, 55, 105, 0.035)' };
 
@@ -42,19 +43,23 @@ function MetadataItem({ icon, title, subtitle, avatar }) {
   </Stack>;
 }
 
-function TestCase({ testCase, index }) {
+function TestCase({ testCase, index, parametros }) {
   const passed = testCase.aprovado;
+  const notExecuted = testCase.statusRetorno === 'NAO_EXECUTADO';
+  const executionError = testCase.statusRetorno === 'ERRO_EXECUCAO';
   return <Accordion disableGutters defaultExpanded={!passed} elevation={0} sx={{ border: '1px solid #E2EAF6', borderRadius: '8px !important', overflow: 'hidden', '&:before': { display: 'none' }, '& + &': { mt: 0.55 } }}>
-    <AccordionSummary expandIcon={<ExpandMoreRoundedIcon sx={{ fontSize: 18 }} />} sx={{ minHeight: '34px !important', px: 1.1, bgcolor: passed ? '#fff' : '#FFF0F2', '& .MuiAccordionSummary-content': { my: '5px !important', alignItems: 'center', gap: 0.85 } }}>
+    <AccordionSummary expandIcon={<ExpandMoreRoundedIcon sx={{ fontSize: 18 }} />} sx={{ minHeight: '34px !important', px: 1.1, bgcolor: passed || notExecuted ? '#fff' : '#FFF0F2', '& .MuiAccordionSummary-content': { my: '5px !important', alignItems: 'center', gap: 0.85 } }}>
       <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: '#F0F4FB', color: '#31528E', display: 'grid', placeItems: 'center', fontSize: '0.68rem', fontWeight: 800 }}>{index + 1}</Box>
       <Typography variant="caption" sx={{ flex: 1, fontWeight: 700, color: '#263854' }}>Caso {index + 1}</Typography>
-      <Chip size="small" icon={passed ? <CheckCircleRoundedIcon /> : <ErrorRoundedIcon />} label={passed ? 'Aprovado' : 'Reprovado'} sx={{ height: 22, bgcolor: passed ? '#E7F8EE' : '#FFE8EB', color: passed ? '#176B3A' : '#A82232', fontSize: '0.65rem', fontWeight: 750, '& .MuiChip-icon': { color: 'inherit', fontSize: 14 } }} />
+      <Chip size="small" icon={passed ? <CheckCircleRoundedIcon /> : <ErrorRoundedIcon />} label={notExecuted ? 'Não executado' : executionError ? 'Erro de execução' : passed ? 'Aprovado' : 'Reprovado'} sx={{ height: 22, bgcolor: notExecuted ? '#F1F5F9' : passed ? '#E7F8EE' : '#FFE8EB', color: notExecuted ? '#64748B' : passed ? '#176B3A' : '#A82232', fontSize: '0.65rem', fontWeight: 750, '& .MuiChip-icon': { color: 'inherit', fontSize: 14 } }} />
     </AccordionSummary>
     <AccordionDetails sx={{ px: 1.4, py: 0.9, bgcolor: '#F9FBFF', borderTop: '1px solid #E9EEF8' }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-        {[['Entrada', testCase.entradas], ['Esperado', testCase.retornoEsperado]].map(([label, value]) => <Box key={label} sx={{ px: 1, '& + &': { borderLeft: '1px solid #E1E8F4' } }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1 }}>
+        {[['Entrada', testCase.entradas], ['Esperado', testCase.retornoEsperado], ['Obtido', testCase.retornoObtido]].map(([label, value]) => <Box key={label} sx={{ px: 1, '& + &': { borderLeft: { xs: 0, sm: '1px solid #E1E8F4' } } }}>
           <Typography sx={{ color: '#74839D', fontSize: '0.65rem' }}>{label}</Typography>
-          <Typography sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.72rem', color: '#18243D', overflowWrap: 'anywhere' }}>{displayValue(value)}</Typography>
+          <Box sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.72rem', color: '#18243D', overflowWrap: 'anywhere' }}>
+            {label === 'Entrada' ? <TestCaseInputs entradas={value} parametros={parametros} /> : label === 'Obtido' ? formatCapturedReturn(testCase) : formatTestCaseValue(value)}
+          </Box>
         </Box>)}
       </Box>
     </AccordionDetails>
@@ -73,7 +78,7 @@ export default function ProfessorSubmissionDetailPage() {
 
   useEffect(() => {
     let active = true;
-    getSubmissao(uuid).then((item) => { if (active) { setSubmission(item); setLoading(false); setError(''); } })
+    getSubmissao(uuid, { includeParameters: true }).then((item) => { if (active) { setSubmission(item); setLoading(false); setError(''); } })
       .catch((err) => { if (active) { setError(err.response?.data?.erro || 'Não foi possível carregar a submissão.'); setLoading(false); } });
     return () => { active = false; };
   }, [uuid, reload]);
@@ -143,7 +148,7 @@ export default function ProfessorSubmissionDetailPage() {
           <Card variant="outlined" sx={cardStyle}>
             <SectionTitle icon={<ScienceOutlinedIcon fontSize="small" />}>Casos de teste</SectionTitle>
             <Box sx={{ p: 1.1, maxHeight: 350, overflowY: 'auto' }}>
-              {caseResults.length ? caseResults.map((testCase, index) => <TestCase key={testCase.casoTesteAtividadeUuid || index} testCase={testCase} index={index} />)
+              {caseResults.length ? caseResults.map((testCase, index) => <TestCase key={testCase.casoTesteAtividadeUuid || index} testCase={testCase} index={index} parametros={submission.parametros} />)
                 : <Typography variant="body2" color="text.secondary" sx={{ px: 0.75, py: 1 }}>{compilationError ? 'Nenhum caso foi executado porque o código não compilou.' : 'Não há resultados por caso disponíveis para esta tentativa.'}</Typography>}
             </Box>
           </Card>

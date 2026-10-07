@@ -4,7 +4,7 @@
  * Etapas:
  *   1. Informações (Título, Descrição, Datas de Abertura/Fechamento, Pontuação Máxima)
  *   2. Funções (Seleção direta da biblioteca, ajuste de dificuldade contextual e pontuação por função)
- *   3. Casos de teste (Seleção individual por caso com toggle interativo de visibilidade Visível / Oculto)
+ *   3. Casos de teste (consulta das cópias preservadas, sem seleção ou alteração)
  *   4. Configurações (tipo e regras de submissão)
  *   5. Revisão e Validação (Checklist em tempo real de critérios de validação + Publicação/Rascunho)
  */
@@ -57,9 +57,11 @@ import {
   removerFuncaoAtividade,
   publicarAtividade,
 } from "../api";
-import { getBibliotecaFuncoes, getCasosTeste, adaptCasoTeste } from "../../funcoes/api";
+import { getBibliotecaFuncoes, getCasosParaAtividade, getFunctionTestCaseCount, adaptCasoTeste } from "../../funcoes/api";
 import { useSnackbar } from "../../../shared/hooks/useSnackbar";
 import { useTurmaContext } from "../../turmas/context/TurmaContext";
+import TestCaseInputs from "../../../shared/components/TestCaseInputs";
+import { formatTestCaseValue } from "../../../shared/components/testCaseValues";
 
 const STEPS = [
   { id: 1, label: "Informações" },
@@ -117,7 +119,7 @@ export default function CreateActivityWizard() {
   });
 
   // Form State: Funções selecionadas
-  // Cada item: { fnId, name, signature, description, difficulty, defaultDifficulty, points, cases: [{ id, numero, inputStr, outputStr, selected, visible }] }
+  // Cada item mantém a assinatura e as entradas correspondentes aos casos exibidos.
   const [selected, setSelected] = useState([]);
 
   // Form State: Configurações
@@ -182,53 +184,19 @@ export default function CreateActivityWizard() {
               (ativ.funcoes || []).map(async (f) => {
                 const fUuid = f.funcaoUuid || f.uuid;
                 const libFn = lib.find((item) => item.uuid === fUuid || item.nome === (f.nome || f.nomeFuncao) || item.nomeFuncao === (f.nome || f.nomeFuncao)) || f;
-                let canonicalCases = libFn.casosTeste || libFn.casos_teste || f.casosTeste || f.casos_teste || [];
-
-                // Se a função na lib não veio com os casos, busca da API
-                if ((!canonicalCases || canonicalCases.length === 0) && libFn.uuid) {
-                  try {
-                    const fetchedCases = await getCasosTeste(libFn.uuid);
-                    if (Array.isArray(fetchedCases) && fetchedCases.length > 0) {
-                      canonicalCases = fetchedCases;
-                    }
-                  } catch (e) {
-                    console.error("Erro ao buscar casos canônicos para edição:", e);
-                  }
-                }
-
                 const assignedCases = f.casosTeste || f.casos_teste || [];
-                const assignedUuids = new Set(
-                  assignedCases.map((c) => c.casoTesteUuid || c.caso_teste_uuid || c.uuid)
-                );
-
-                // Cria mapa de visibilidade para os casos vinculados
-                const visibilityMap = new Map();
-                assignedCases.forEach((c) => {
-                  const cId = c.casoTesteUuid || c.caso_teste_uuid || c.uuid;
-                  const isVis = c.visibilidade
-                    ? c.visibilidade.toUpperCase() === "VISIVEL"
-                    : (c.oculto !== undefined ? !c.oculto : true);
-                  visibilityMap.set(cId, isVis);
-                });
-
-                // Monta casos combinando os canônicos da biblioteca com os vinculados
-                const baseList = canonicalCases.length > 0 ? canonicalCases : assignedCases;
-                const cases = baseList.map((rawTc, idx) => {
+                // A edição consulta somente os casos do snapshot, nunca os da biblioteca atual.
+                const cases = assignedCases.map((rawTc, idx) => {
                   const tc = adaptCasoTeste(rawTc, idx);
                   const tcId = tc.uuid || tc.casoTesteUuid;
-                  const isSelected = assignedUuids.size === 0 ? true : assignedUuids.has(tcId);
-                  const tcVis = tc.visibilidade ? tc.visibilidade.toUpperCase() === "VISIVEL" : !tc.oculto;
-                  const isVisible = visibilityMap.has(tcId) ? visibilityMap.get(tcId) : tcVis;
+                  const isVisible = tc.visibilidade ? tc.visibilidade.toUpperCase() === "VISIVEL" : !tc.oculto;
 
                   return {
                     id: tcId,
                     numero: tc.numero || idx + 1,
-                    inputStr: typeof tc.entradas === "object" ? JSON.stringify(tc.entradas) : String(tc.entradas ?? ""),
-                    outputStr:
-                      typeof tc.retornoEsperado === "object" && tc.retornoEsperado !== null
-                        ? (tc.retornoEsperado?.valor ?? JSON.stringify(tc.retornoEsperado))
-                        : String(tc.retornoEsperado ?? ""),
-                    selected: isSelected,
+                    entradas: tc.entradas,
+                    outputStr: formatTestCaseValue(tc.retornoEsperado),
+                    selected: true,
                     visible: isVisible,
                     visibilidade: isVisible ? "VISIVEL" : "OCULTO",
                     oculto: !isVisible,
@@ -238,6 +206,7 @@ export default function CreateActivityWizard() {
                 return {
                   fnId: libFn.uuid || fUuid,
                   internalId: f.uuid,
+                  parametros: f.parametros,
                   name: f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao,
                   signature: `${f.nome || f.nomeFuncao || f.nome_funcao || libFn.nome || libFn.nomeFuncao}()`,
                   description: f.descricao || libFn.enunciado || libFn.descricao || "",
@@ -283,57 +252,48 @@ export default function CreateActivityWizard() {
   const [addingFnId, setAddingFnId] = useState(null);
 
   const handleAddFunction = async (libFn) => {
+    if (addingFnId) return false;
     setAddingFnId(libFn.uuid);
-    let canonicalCases = libFn.casosTeste || libFn.casos_teste || [];
+    try {
+      const canonicalCases = await getCasosParaAtividade(libFn);
+      const cases = canonicalCases.map((rawTc, idx) => {
+        const tc = adaptCasoTeste(rawTc, idx);
+        const isVisible = tc.visibilidade
+          ? tc.visibilidade.toUpperCase() === "VISIVEL"
+          : (tc.oculto !== undefined ? !tc.oculto : true);
+        return {
+          id: tc.uuid || tc.casoTesteUuid,
+          numero: tc.numero || idx + 1,
+          entradas: tc.entradas,
+          outputStr: formatTestCaseValue(tc.retornoEsperado),
+          selected: true,
+          visible: isVisible,
+          visibilidade: isVisible ? "VISIVEL" : "OCULTO",
+          oculto: !isVisible,
+        };
+      });
 
-    // Se a função veio de getBibliotecaFuncoes(), os casos de teste não vêm no array; busca via API
-    if (!canonicalCases || canonicalCases.length === 0) {
-      try {
-        const fetchedCases = await getCasosTeste(libFn.uuid);
-        if (Array.isArray(fetchedCases)) {
-          canonicalCases = fetchedCases;
-        }
-      } catch (err) {
-        console.error("Erro ao buscar casos de teste da função:", err);
-      }
+      setSelected((prev) => [
+        ...prev,
+        {
+          fnId: libFn.uuid,
+          parametros: libFn.parametros,
+          name: libFn.nome || libFn.nomeFuncao || libFn.nome_funcao,
+          signature: `${libFn.nome || libFn.nomeFuncao || libFn.nome_funcao}()`,
+          description: libFn.enunciado || libFn.descricao || "",
+          difficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+          defaultDifficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
+          points: 10,
+          cases,
+        },
+      ]);
+      return true;
+    } catch (err) {
+      showError(err.response?.data?.erro || err.response?.data?.detail || err.message || "Erro ao carregar os casos de teste.");
+      return false;
+    } finally {
+      setAddingFnId(null);
     }
-
-    const cases = (canonicalCases || []).map((rawTc, idx) => {
-      const tc = adaptCasoTeste(rawTc, idx);
-      // Consulta o verdadeiro estado do caso de teste cadastrado na biblioteca
-      const isVisible = tc.visibilidade
-        ? tc.visibilidade.toUpperCase() === "VISIVEL"
-        : (tc.oculto !== undefined ? !tc.oculto : true);
-
-      return {
-        id: tc.uuid || tc.casoTesteUuid,
-        numero: tc.numero || idx + 1,
-        inputStr: typeof tc.entradas === "object" ? JSON.stringify(tc.entradas) : String(tc.entradas ?? ""),
-        outputStr:
-          typeof tc.retornoEsperado === "object" && tc.retornoEsperado !== null
-            ? (tc.retornoEsperado?.valor ?? JSON.stringify(tc.retornoEsperado))
-            : String(tc.retornoEsperado ?? ""),
-        selected: true,
-        visible: isVisible,
-        visibilidade: isVisible ? "VISIVEL" : "OCULTO",
-        oculto: !isVisible,
-      };
-    });
-
-    setSelected((prev) => [
-      ...prev,
-      {
-        fnId: libFn.uuid,
-        name: libFn.nome || libFn.nomeFuncao || libFn.nome_funcao,
-        signature: `${libFn.nome || libFn.nomeFuncao || libFn.nome_funcao}()`,
-        description: libFn.enunciado || libFn.descricao || "",
-        difficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
-        defaultDifficulty: libFn.dificuldade || libFn.dificuldadePadrao || libFn.dificuldade_padrao || "medio",
-        points: 10,
-        cases,
-      },
-    ]);
-    setAddingFnId(null);
   };
 
   const handleRemoveFunction = (fnId) => {
@@ -372,7 +332,7 @@ export default function CreateActivityWizard() {
       selected.forEach((sf) => {
         const chosen = sf.cases.length;
         if (chosen === 0) {
-          errors[`cases_${sf.fnId}`] = `${sf.name}: selecione ao menos um caso de teste para avaliação.`;
+          errors[`cases_${sf.fnId}`] = `${sf.name}: cadastre ao menos um caso de teste na biblioteca e adicione a função novamente.`;
         }
       });
     }
@@ -984,6 +944,12 @@ export default function CreateActivityWizard() {
             </Typography>
           </Box>
 
+          {selected.length > 0 && selected.every((sf) => sf.cases.length > 0 && sf.cases.every((tc) => !tc.visible)) && (
+            <Alert severity="info">
+              Esta atividade possui apenas casos de teste ocultos. Os alunos poderão enviar suas soluções, mas não verão exemplos de entrada e retorno esperado.
+            </Alert>
+          )}
+
           {selected.map((sf) => {
             const chosenCount = sf.cases.length;
             const visibleCount = sf.cases.filter((c) => c.visible).length;
@@ -1097,7 +1063,7 @@ export default function CreateActivityWizard() {
                                 fontSize: "0.8rem",
                               }}
                             >
-                              {tc.inputStr || "{}"}
+                              <TestCaseInputs entradas={tc.entradas} parametros={sf.parametros} />
                             </Box>
                             <Box
                               component="td"
@@ -1664,10 +1630,8 @@ export default function CreateActivityWizard() {
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, maxHeight: 380, overflowY: "auto", pr: 0.5 }}>
               {filteredAvailable.map((fn) => {
                 const diff = getDifficultyBadge(fn.dificuldade || fn.dificuldadePadrao || fn.dificuldade_padrao);
-                const testCasesCount =
-                  fn.totalCasosTeste ??
-                  fn.total_casos_teste ??
-                  (fn.casosTeste || fn.casos_teste || []).length;
+                const testCasesCount = getFunctionTestCaseCount(fn);
+                const withoutCases = testCasesCount === 0;
                 const isAddingThis = addingFnId === fn.uuid;
 
                 return (
@@ -1675,10 +1639,10 @@ export default function CreateActivityWizard() {
                     key={fn.uuid}
                     component="button"
                     type="button"
-                    disabled={isAddingThis}
+                    disabled={Boolean(addingFnId) || withoutCases}
                     onClick={async () => {
-                      await handleAddFunction(fn);
-                      if (availableToAdd.length === 1) setPickerOpen(false);
+                      const added = await handleAddFunction(fn);
+                      if (added && availableToAdd.length === 1) setPickerOpen(false);
                     }}
                     sx={{
                       width: "100%",
@@ -1690,8 +1654,8 @@ export default function CreateActivityWizard() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      cursor: isAddingThis ? "wait" : "pointer",
-                      opacity: isAddingThis ? 0.7 : 1,
+                      cursor: withoutCases ? "not-allowed" : isAddingThis ? "wait" : "pointer",
+                      opacity: withoutCases ? 0.6 : isAddingThis ? 0.7 : 1,
                       transition: "all 0.15s",
                       "&:hover": {
                         borderColor: "#4F46E5",
@@ -1732,7 +1696,7 @@ export default function CreateActivityWizard() {
                         {fn.enunciado || fn.descricao || "Sem descrição"}
                       </Typography>
                       <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.5 }}>
-                        {testCasesCount} casos de teste cadastrados
+                        {withoutCases ? "Cadastre casos de teste na biblioteca para adicionar esta função." : testCasesCount == null ? "Casos de teste serão consultados ao adicionar." : `${testCasesCount} casos de teste cadastrados`}
                       </Typography>
                     </Box>
 
@@ -1756,8 +1720,8 @@ export default function CreateActivityWizard() {
                         </>
                       ) : (
                         <>
-                          <AddIcon sx={{ fontSize: 18 }} />
-                          Adicionar
+                          {!withoutCases && <AddIcon sx={{ fontSize: 18 }} />}
+                          {withoutCases ? "Sem casos de teste" : "Adicionar"}
                         </>
                       )}
                     </Box>

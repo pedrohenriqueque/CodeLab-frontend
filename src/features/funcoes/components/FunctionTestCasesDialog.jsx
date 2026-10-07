@@ -46,6 +46,8 @@ import {
 } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { useAuth } from '../../auth/hooks/useAuthProvider';
+import TestCaseInputs from '../../../shared/components/TestCaseInputs';
+import { formatTestCaseValue, parseTestCaseValue } from '../../../shared/components/testCaseValues';
 
 export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdated }) {
   const [casos, setCasos] = useState([]);
@@ -104,9 +106,9 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
 
   const handleOpenEdit = (caso) => {
     const initInputs = {};
-    parametros.forEach((p) => {
-      initInputs[p.nome] = typeof caso.entradas?.[parametros.indexOf(p)] === 'object'
-        ? JSON.stringify(caso.entradas[parametros.indexOf(p)]) : (caso.entradas?.[parametros.indexOf(p)] ?? '');
+    parametros.forEach((p, index) => {
+      const value = caso.entradas?.[index];
+      initInputs[p.nome] = typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value);
     });
     setFormInputs(initInputs);
     const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
@@ -127,35 +129,21 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
 
     setSaving(true);
     try {
-      const parsedInputs = {};
-      parametros.forEach((p) => {
-        const val = formInputs[p.nome];
-        if (p.tipo === 'int' || p.tipo === 'long') {
-          const n = parseInt(val, 10);
-          parsedInputs[p.nome] = isNaN(n) ? val : n;
-        } else if (p.tipo === 'float' || p.tipo === 'double') {
-          const n = parseFloat(val);
-          parsedInputs[p.nome] = isNaN(n) ? val : n;
-        } else {
-          parsedInputs[p.nome] = val;
+      const parsedInputs = parametros.map((p) => {
+        try {
+          return parseTestCaseValue(formInputs[p.nome], p.tipo);
+        } catch (err) {
+          throw new Error(`${p.nome}: ${err.message}`, { cause: err });
         }
       });
-
-      const retTipo = funcao?.tipoRetorno || 'int';
-      let parsedOut = formOutput;
-      if (retTipo === 'int' || retTipo === 'long') {
-        const n = parseInt(formOutput, 10);
-        parsedOut = isNaN(n) ? formOutput : n;
-      } else if (retTipo === 'float' || retTipo === 'double') {
-        const n = parseFloat(formOutput);
-        parsedOut = isNaN(n) ? formOutput : n;
-      }
+      const parsedOut = parseTestCaseValue(formOutput, funcao?.tipoRetorno || 'int');
 
       const body = {
-        entradas: parametros.map((p) => parsedInputs[p.nome]),
+        entradas: parsedInputs,
         retornoEsperado: parsedOut,
         visibilidade: formOculto ? 'OCULTO' : 'VISIVEL',
         peso,
+        descricao: formDescricao,
       };
 
       if (editingCaso?.uuid) {
@@ -170,7 +158,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
       await fetchCasos();
       if (onUpdated) onUpdated();
     } catch (err) {
-      showError(err.response?.data?.detail || 'Erro ao salvar caso de teste');
+      showError(err.response?.data?.erro || err.response?.data?.detail || err.message || 'Erro ao salvar caso de teste');
     } finally {
       setSaving(false);
     }
@@ -221,7 +209,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {/* Inputs por parâmetro */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(parametros.length, 3)}, 1fr)`, gap: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: `repeat(${Math.max(1, Math.min(parametros.length, 3))}, minmax(0, 1fr))` }, gap: 1.5 }}>
                 {parametros.map((p) => (
                   <TextField
                     key={p.nome}
@@ -231,14 +219,15 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                     size="small"
                     required
                     fullWidth
-                    placeholder={`Valor de ${p.nome}`}
+                    placeholder={p.tipo.endsWith('[]') ? '[1, 2, 3]' : p.tipo === 'bool' ? 'true ou false' : `Valor de ${p.nome}`}
+                    helperText={p.tipo.endsWith('[]') ? 'Vetor em formato JSON' : p.tipo === 'bool' ? 'Use true ou false' : undefined}
                     sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                   />
                 ))}
               </Box>
 
               {/* Saída esperada, peso e descrição */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 0.7fr 2fr', gap: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 0.7fr 2fr' }, gap: 1.5 }}>
                 <TextField
                   label="Saída Esperada (retorno)"
                   value={formOutput}
@@ -304,7 +293,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                   size="small"
                   variant="contained"
                   onClick={handleSaveCaso}
-                  disabled={saving || formOutput === ''}
+                  disabled={saving || (formOutput === '' && funcao?.tipoRetorno !== 'string')}
                   startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
                   sx={{ textTransform: 'none', borderRadius: 2, fontWeight: 600 }}
                 >
@@ -342,11 +331,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
               </TableHead>
               <TableBody>
                 {casos.map((caso, idx) => {
-                  const inputStr = parametros.length
-                    ? parametros.map((p, inputIndex) => `${p.nome} = ${JSON.stringify(caso.entradas?.[inputIndex])}`).join(', ')
-                    : JSON.stringify(caso.entradas ?? []);
-
-                  const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
+                  const outVal = formatTestCaseValue(caso.retornoEsperado);
 
                   return (
                     <TableRow key={caso.uuid || idx} hover>
@@ -355,7 +340,7 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                       </TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>{Number(caso.peso ?? 1).toFixed(2)}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                        {inputStr}
+                        <TestCaseInputs entradas={caso.entradas} parametros={parametros} />
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 700, color: '#16A34A' }}>
                         {outVal}

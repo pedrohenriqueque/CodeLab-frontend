@@ -43,6 +43,7 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import useAtividadeDetail from '../hooks/useAtividadeDetail';
 import useActivityProgress from '../hooks/useActivityProgress';
 import { getSubmissoes } from '../../submissoes/api';
+import NoVisibleTestCasesNotice from '../../../shared/components/NoVisibleTestCasesNotice';
 
 // ─── Formatters & Helpers ───────────────────────────────────────────────────
 
@@ -805,6 +806,7 @@ export default function StudentActivityDetailPage() {
         </Alert>
       ) : (
         <Box>
+          {funcoes.length > 0 && funcoes.every((funcao) => !(funcao.casosTeste || []).length) && <NoVisibleTestCasesNotice />}
           {funcoes.map((funcao) => {
             const targetFuncUuid = funcao.funcaoUuid || funcao.uuid;
             const prog = progresso.find(

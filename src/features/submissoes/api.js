@@ -3,6 +3,7 @@
  */
 
 import httpClient from '../../shared/api/httpClient';
+import { getFuncoesAtividade } from '../atividades/api';
 
 function adaptSubmission(submissao, index, total) {
   const hasResult = submissao.nota !== null && submissao.nota !== undefined;
@@ -83,9 +84,19 @@ export async function getSubmissoes(funcaoUuid, status, atividadeUuid, alunoUuid
   });
 }
 
-export async function getSubmissao(uuid) {
+export async function getSubmissao(uuid, { includeParameters = false } = {}) {
   const { data } = await httpClient.get(`/api/submissoes/${uuid}`);
-  return adaptSubmission(data);
+  const submissao = adaptSubmission(data);
+  if (!includeParameters || !submissao.resultadosCasos?.length) return submissao;
+
+  try {
+    const funcoes = await getFuncoesAtividade(submissao.atividadeUuid);
+    const funcao = funcoes.find((item) => item.uuid === submissao.funcaoUuid);
+    return { ...submissao, parametros: funcao?.parametros };
+  } catch {
+    // O componente de entradas informa a ausência da assinatura sem ocultar a submissão.
+    return { ...submissao, parametros: undefined };
+  }
 }
 
 export async function createSubmissao(funcaoAtividadeUuid, codigoFonte) {
@@ -102,4 +113,3 @@ export async function updateSubmissaoFeedback(uuid, feedbackProfessor) {
   });
   return data;
 }
-
