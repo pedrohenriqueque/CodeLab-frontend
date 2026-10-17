@@ -11,7 +11,7 @@
  * - Exclusão com bloqueio amigável caso vinculada a atividades (409)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -32,6 +32,7 @@ import {
   DialogContent,
   DialogActions,
   CircularProgress,
+  Pagination,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
@@ -40,6 +41,10 @@ import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import BarChartRoundedIcon from '@mui/icons-material/BarChartRounded';
+import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
+import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined';
+import ClearIcon from '@mui/icons-material/Clear';
 
 import {
   getBibliotecaFuncoes,
@@ -59,6 +64,8 @@ const DIFICULDADE_MAP = {
   dificil: { label: 'Difícil', color: 'error' },
 };
 
+const ITEMS_PER_PAGE = 9;
+
 export default function FunctionLibraryPage() {
   const [funcoes, setFuncoes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +74,8 @@ export default function FunctionLibraryPage() {
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
   const [dificuldadeFilter, setDificuldadeFilter] = useState('todas');
+  const [autoriaFilter, setAutoriaFilter] = useState('todas');
+  const [page, setPage] = useState(1);
 
   // Modais
   const [formOpen, setFormOpen] = useState(false);
@@ -83,11 +92,7 @@ export default function FunctionLibraryPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = {};
-      if (searchQuery.trim()) params.busca = searchQuery.trim();
-      if (dificuldadeFilter !== 'todas') params.dificuldade = dificuldadeFilter;
-
-      const data = await getBibliotecaFuncoes(params);
+      const data = await getBibliotecaFuncoes();
       setFuncoes(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao carregar funções da biblioteca');
@@ -95,11 +100,78 @@ export default function FunctionLibraryPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, dificuldadeFilter]);
+  }, []);
 
   useEffect(() => {
     fetchFuncoes();
   }, [fetchFuncoes]);
+
+  const normalize = (str) =>
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+  const filteredFuncoes = useMemo(() => {
+    return funcoes.filter((fn) => {
+      // 1. Busca por nome, descrição, tipo de retorno, parâmetros ou autor
+      if (searchQuery.trim()) {
+        const queryNorm = normalize(searchQuery.trim());
+        const nomeNorm = normalize(fn.nome);
+        const enunciadoNorm = normalize(fn.enunciado);
+        const retornoNorm = normalize(fn.tipoRetorno || fn.tipo_retorno);
+        const autorNorm = normalize(fn.professorNome || fn.professor_nome);
+        const paramsNorm = normalize((fn.parametros || []).map((p) => `${p.tipo} ${p.nome}`).join(' '));
+
+        const match =
+          nomeNorm.includes(queryNorm) ||
+          enunciadoNorm.includes(queryNorm) ||
+          retornoNorm.includes(queryNorm) ||
+          autorNorm.includes(queryNorm) ||
+          paramsNorm.includes(queryNorm);
+
+        if (!match) return false;
+      }
+
+      // 2. Filtro por Dificuldade
+      if (dificuldadeFilter !== 'todas') {
+        const diff = String(fn.dificuldade || fn.dificuldadePadrao || '').toLowerCase();
+        if (diff !== dificuldadeFilter.toLowerCase()) return false;
+      }
+
+      // 3. Filtro por Autoria
+      if (autoriaFilter === 'minhas') {
+        const isMinha = Boolean(
+          user?.uuid && (user.uuid === fn.professorUuid || user.uuid === fn.professor_uuid)
+        );
+        if (!isMinha) return false;
+      }
+
+      return true;
+    });
+  }, [funcoes, searchQuery, dificuldadeFilter, autoriaFilter, user?.uuid]);
+
+  // Reseta para a primeira página quando os filtros mudam
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, dificuldadeFilter, autoriaFilter]);
+
+  const pageCount = Math.ceil(filteredFuncoes.length / ITEMS_PER_PAGE) || 1;
+
+  const paginatedFuncoes = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return filteredFuncoes.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredFuncoes, page]);
+
+  const hasActiveFilters =
+    searchQuery.trim() !== '' || dificuldadeFilter !== 'todas' || autoriaFilter !== 'todas';
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setDificuldadeFilter('todas');
+    setAutoriaFilter('todas');
+    setPage(1);
+  };
 
   const handleCreateOrUpdate = async (formData) => {
     try {
@@ -156,7 +228,7 @@ export default function FunctionLibraryPage() {
           <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', letterSpacing: '-0.02em' }}>
             Biblioteca de Funções
           </Typography>
-          <Typography variant="subtitle1" sx={{ mt: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ mt: 0.5, color: '#64748B' }}>
             Funções C e casos de teste reutilizáveis em atividades
           </Typography>
         </Box>
@@ -168,46 +240,213 @@ export default function FunctionLibraryPage() {
             setEditingFuncao(null);
             setFormOpen(true);
           }}
-          size="large"
-          sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
+          sx={{
+            borderRadius: '9999px',
+            px: 3,
+            py: 1,
+            fontWeight: 700,
+            fontSize: '0.9rem',
+            bgcolor: '#1D4ED8',
+            textTransform: 'none',
+            boxShadow: 'none',
+            '&:hover': {
+              bgcolor: '#1E40AF',
+            },
+          }}
         >
           Nova Função
         </Button>
       </Box>
 
-      {/* Barra de Filtros */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <TextField
-          id="busca-funcoes"
-          placeholder="Pesquisar função por nome ou descrição..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          size="small"
-          sx={{ minWidth: 320, flexGrow: { xs: 1, sm: 0 }, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-              </InputAdornment>
-            ),
+      {/* Card de Filtros e Busca */}
+      <Box
+        sx={{
+          bgcolor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E2E8F0',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          p: { xs: 2, sm: 2.25 },
+          mb: 3,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 2.5,
+            flexWrap: 'wrap',
           }}
-        />
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#64748B' }}>
-            Dificuldade:
-          </Typography>
-          <ToggleButtonGroup
-            value={dificuldadeFilter}
-            exclusive
-            onChange={(_, val) => val && setDificuldadeFilter(val)}
+        >
+          {/* Campo de Busca em Formato Pílula */}
+          <TextField
+            id="busca-funcoes"
+            placeholder="Pesquisar função por nome ou descrição..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             size="small"
-          >
-            <ToggleButton value="todas">Todas</ToggleButton>
-            <ToggleButton value="facil">Fácil</ToggleButton>
-            <ToggleButton value="medio">Médio</ToggleButton>
-            <ToggleButton value="dificil">Difícil</ToggleButton>
-          </ToggleButtonGroup>
+            sx={{
+              flex: { xs: '1 1 100%', md: '1 1 320px' },
+              maxWidth: { md: 440 },
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '9999px',
+                backgroundColor: '#FFFFFF',
+                fontSize: '0.875rem',
+                color: '#0F172A',
+                '& fieldset': {
+                  borderColor: '#E2E8F0',
+                },
+                '&:hover fieldset': {
+                  borderColor: '#CBD5E1',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#2563EB',
+                  borderWidth: '1.5px',
+                },
+              },
+              '& .MuiInputBase-input::placeholder': {
+                color: '#94A3B8',
+                opacity: 1,
+                fontSize: '0.85rem',
+              },
+            }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: '#94A3B8', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: searchQuery ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ p: 0.5 }}>
+                      <ClearIcon sx={{ fontSize: 16, color: '#94A3B8' }} />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              },
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: '#94A3B8', fontSize: 20 }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ p: 0.5 }}>
+                    <ClearIcon sx={{ fontSize: 16, color: '#94A3B8' }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
+
+          {/* Filtro Dificuldade */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <BarChartRoundedIcon sx={{ fontSize: 17, color: '#475569' }} />
+              <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
+                Dificuldade
+              </Typography>
+              <Tooltip title="Filtrar por nível de dificuldade das funções" arrow placement="top">
+                <HelpOutlineOutlinedIcon sx={{ fontSize: 14, color: '#94A3B8', cursor: 'pointer' }} />
+              </Tooltip>
+            </Box>
+            <ToggleButtonGroup
+              value={dificuldadeFilter}
+              exclusive
+              onChange={(_, val) => val && setDificuldadeFilter(val)}
+              size="small"
+              sx={{
+                bgcolor: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '9999px',
+                p: '3px',
+                gap: '3px',
+                '& .MuiToggleButtonGroup-grouped': {
+                  border: 'none',
+                  borderRadius: '9999px !important',
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  px: 1.75,
+                  py: 0.45,
+                  color: '#475569',
+                  '&.Mui-selected': {
+                    bgcolor: '#3B82F6',
+                    color: '#FFFFFF',
+                    boxShadow: '0 1px 3px rgba(37, 99, 235, 0.25)',
+                    '&:hover': {
+                      bgcolor: '#2563EB',
+                    },
+                  },
+                  '&:hover': {
+                    bgcolor: '#F1F5F9',
+                  },
+                },
+              }}
+            >
+              <ToggleButton value="todas">Todas</ToggleButton>
+              <ToggleButton value="facil">Fácil</ToggleButton>
+              <ToggleButton value="medio">Médio</ToggleButton>
+              <ToggleButton value="dificil">Difícil</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {/* Filtro Autoria */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <PersonOutlineOutlinedIcon sx={{ fontSize: 17, color: '#475569' }} />
+              <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
+                Autoria
+              </Typography>
+            </Box>
+            <ToggleButtonGroup
+              value={autoriaFilter}
+              exclusive
+              onChange={(_, val) => val && setAutoriaFilter(val)}
+              size="small"
+              sx={{
+                bgcolor: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '9999px',
+                p: '3px',
+                gap: '3px',
+                '& .MuiToggleButtonGroup-grouped': {
+                  border: 'none',
+                  borderRadius: '9999px !important',
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  px: 2,
+                  py: 0.45,
+                  color: '#475569',
+                  '&.Mui-selected': {
+                    bgcolor: '#3B82F6',
+                    color: '#FFFFFF',
+                    boxShadow: '0 1px 3px rgba(37, 99, 235, 0.25)',
+                    '&:hover': {
+                      bgcolor: '#2563EB',
+                    },
+                  },
+                  '&:hover': {
+                    bgcolor: '#F1F5F9',
+                  },
+                },
+              }}
+            >
+              <ToggleButton value="todas">Todas</ToggleButton>
+              <ToggleButton value="minhas">Minhas funções</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {/* Contador de Funções Encontradas */}
+          <Box sx={{ ml: { xs: 0, lg: 'auto' }, pb: 0.75 }}>
+            <Typography sx={{ fontSize: '0.8125rem', color: '#64748B', fontWeight: 500 }}>
+              {filteredFuncoes.length}{' '}
+              {filteredFuncoes.length === 1 ? 'função encontrada' : 'funções encontradas'}
+            </Typography>
+          </Box>
         </Box>
       </Box>
 
@@ -225,32 +464,42 @@ export default function FunctionLibraryPage() {
             <Skeleton key={i} variant="rounded" height={160} sx={{ borderRadius: 3 }} />
           ))}
         </Box>
-      ) : funcoes.length === 0 ? (
+      ) : filteredFuncoes.length === 0 ? (
         <Card variant="outlined" sx={{ borderRadius: 3, py: 8, textAlign: 'center', backgroundColor: '#FAFCFF' }}>
           <FunctionsIcon sx={{ fontSize: 56, color: '#94A3B8', mb: 1.5 }} />
           <Typography variant="h6" sx={{ color: '#334155', fontWeight: 600 }}>
             Nenhuma função encontrada
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
-            {searchQuery || dificuldadeFilter !== 'todas'
-              ? 'Tente alterar os filtros de pesquisa.'
+            {hasActiveFilters
+              ? 'Tente alterar os termos da busca ou limpar os filtros.'
               : 'Comece criando a primeira função reutilizável da biblioteca.'}
           </Typography>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingFuncao(null);
-              setFormOpen(true);
-            }}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            Criar Função
-          </Button>
+          {hasActiveFilters ? (
+            <Button
+              variant="outlined"
+              onClick={handleClearFilters}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            >
+              Limpar Filtros
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditingFuncao(null);
+                setFormOpen(true);
+              }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            >
+              Criar Função
+            </Button>
+          )}
         </Card>
       ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2.5 }}>
-          {funcoes.map((fn) => {
+          {paginatedFuncoes.map((fn) => {
             const dif = DIFICULDADE_MAP[String(fn.dificuldade || 'MEDIO').toLowerCase()] || DIFICULDADE_MAP.medio;
             const paramList = (fn.parametros || []).map((p) => `${p.tipo} ${p.nome}`).join(', ');
             const assinatura = `${fn.tipoRetorno} ${fn.nome}(${paramList})`;
@@ -379,6 +628,33 @@ export default function FunctionLibraryPage() {
               </Card>
             );
           })}
+        </Box>
+      )}
+
+      {/* Paginação a cada 9 itens */}
+      {!loading && pageCount > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 3 }}>
+          <Pagination
+            count={pageCount}
+            page={page}
+            onChange={(_, value) => {
+              setPage(value);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            color="primary"
+            shape="rounded"
+            size="medium"
+            sx={{
+              '& .MuiPaginationItem-root': {
+                fontWeight: 600,
+                borderRadius: '8px',
+              },
+              '& .Mui-selected': {
+                bgcolor: '#2563EB !important',
+                color: '#FFFFFF !important',
+              },
+            }}
+          />
         </Box>
       )}
 

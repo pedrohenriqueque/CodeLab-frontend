@@ -4,8 +4,8 @@
 
 import httpClient from '../../shared/api/httpClient';
 
-export async function getBibliotecaFuncoes() {
-  const { data } = await httpClient.get('/api/funcoes');
+export async function getBibliotecaFuncoes(params) {
+  const { data } = await httpClient.get('/api/funcoes', { params });
   return data;
 }
 
