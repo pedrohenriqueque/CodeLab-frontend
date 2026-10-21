@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -23,7 +23,6 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 
 import useAtividades from '../hooks/useAtividades';
 import { deleteAtividade, encerrarAtividade, updateAtividade } from '../api';
-import { getSubmissoes } from '../../submissoes/api';
 import StatsCards from '../components/StatsCards';
 import ActivityTable from '../components/ActivityTable';
 import { useTurmaContext } from '../../turmas/context/TurmaContext';
@@ -38,48 +37,10 @@ export default function ActivityListPage() {
   const { turmaAtiva, turmas, setTurmaAtiva } = useTurmaContext();
   const { atividades, loading, error, refetch } = useAtividades();
 
-  // Submissões para regras de exclusão ("quando der")
-  const [submissionCounts, setSubmissionCounts] = useState({});
-
-  const reloadSubmissions = useCallback(async () => {
-    try {
-      const subs = await getSubmissoes();
-      const counts = {};
-      (subs || []).forEach((s) => {
-        const aId = s.atividadeUuid || s.atividade_uuid;
-        if (aId) {
-          counts[aId] = (counts[aId] || 0) + 1;
-        }
-      });
-      setSubmissionCounts(counts);
-    } catch {
-      // fallback
-    }
-  }, []);
-
-  useEffect(() => {
-    let ativo = true;
-    getSubmissoes()
-      .then((subs) => {
-        if (!ativo) return;
-        const counts = {};
-        (subs || []).forEach((s) => {
-          const aId = s.atividadeUuid || s.atividade_uuid;
-          if (aId) {
-            counts[aId] = (counts[aId] || 0) + 1;
-          }
-        });
-        setSubmissionCounts(counts);
-      })
-      .catch(() => {});
-    return () => {
-      ativo = false;
-    };
-  }, []);
-
-  const refetchAll = useCallback(async () => {
-    await Promise.all([refetch(), reloadSubmissions()]);
-  }, [refetch, reloadSubmissions]);
+  const submissionCounts = useMemo(() => Object.fromEntries(
+    atividades.map((atividade) => [atividade.uuid, atividade.totalSubmissoes ?? 0])
+  ), [atividades]);
+  const refetchAll = refetch;
 
   // Estados de filtro e busca
   const [statusFilter, setStatusFilter] = useState('TODAS');

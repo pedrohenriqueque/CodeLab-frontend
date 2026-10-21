@@ -76,7 +76,7 @@ import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 
 import { getFuncao, getAtividade, getFuncoesAtividade } from '../../atividades/api';
-import { createSubmissao, getSubmissoes } from '../api';
+import { createSubmissao, getSubmissoes, getSubmissao } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import TestCaseInputs from '../../../shared/components/TestCaseInputs';
 import NoVisibleTestCasesNotice from '../../../shared/components/NoVisibleTestCasesNotice';
@@ -428,13 +428,12 @@ export default function CodeSubmissionPage() {
   const fetchHistorico = useCallback(async () => {
     if (!funcaoUuid) return [];
     try {
-      const submissoes = await getSubmissoes();
+      const submissoes = await getSubmissoes(funcaoUuid, null, atividadeUuid);
       const filtradas = submissoes.filter(
         (sub) =>
           sub.funcaoUuid === funcaoUuid &&
           (!atividadeUuid || sub.atividadeUuid === atividadeUuid)
       );
-      setHistoricoTentativas(filtradas);
       return filtradas;
     } catch {
       showError('Erro ao carregar o histórico de tentativas');
@@ -444,6 +443,7 @@ export default function CodeSubmissionPage() {
 
   // Carregar dados iniciais da função e da atividade
   useEffect(() => {
+    let active = true;
     async function loadData() {
       setLoading(true);
       try {
@@ -456,7 +456,6 @@ export default function CodeSubmissionPage() {
             getFuncoesAtividade(atividadeUuid),
           ]);
           atividadeData = { ...atividadeBase, funcoes: funcoesAtividade };
-          setAtividade(atividadeData);
 
           const found = (atividadeData?.funcoes || []).find(
             (f) => (f.funcaoUuid || f.uuid) === funcaoUuid
@@ -468,19 +467,20 @@ export default function CodeSubmissionPage() {
           funcaoData = await getFuncao(funcaoUuid);
         }
 
-        setFuncao(funcaoData);
-
-        // Inicializar código do template
         const templateInicial = generateInitialTemplate(funcaoData);
-        setCodigo(templateInicial);
-
-        // Carregar histórico e selecionar a tentativa mais recente para visualização
         const hist = await fetchHistorico();
+        const ultima = hist.length > 0 ? await getSubmissao(hist[0].uuid).catch(() => {
+          if (active) showError('Não foi possível recuperar o código da última tentativa. Consulte o histórico antes de continuar.');
+          return hist[0];
+        }) : null;
+        if (!active) return;
+        setAtividade(atividadeData);
+        setFuncao(funcaoData);
+        setHistoricoTentativas(hist);
+        setCodigo(ultima?.codigoSubmetido ?? templateInicial);
+        setResultado(ultima);
+        setModalDetalhesOpen(false);
         if (hist && hist.length > 0) {
-          setResultado(hist[0]);
-          if (hist[0].codigoSubmetido) {
-            setCodigo(hist[0].codigoSubmetido);
-          }
           // Inicializar acordeons de casos de teste expandidos
           const initialExpanded = {};
           (funcaoData?.casosTeste || []).forEach((c, idx) => {
@@ -489,12 +489,13 @@ export default function CodeSubmissionPage() {
           setExpandedCases(initialExpanded);
         }
       } catch {
-        showError('Erro ao carregar dados da função');
+        if (active) showError('Erro ao carregar dados da função');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     loadData();
+    return () => { active = false; };
   }, [funcaoUuid, atividadeUuid, showError, fetchHistorico]);
 
   // Metadados contextuais
@@ -559,8 +560,16 @@ export default function CodeSubmissionPage() {
       setResultado(res);
 
       // Atualizar lista de tentativas
-      const novoHist = await fetchHistorico();
-      const ultimaTentativa = (novoHist && novoHist.length > 0) ? novoHist[0] : res;
+      // O envio já foi aceito: uma falha na consulta seguinte não desfaz a tentativa.
+      const [novoHist, detalhe] = await Promise.all([
+        fetchHistorico(),
+        getSubmissao(res.uuid).catch(() => {
+          showError('Tentativa registrada. Não foi possível atualizar os detalhes; consulte o histórico.');
+          return res;
+        }),
+      ]);
+      setHistoricoTentativas(novoHist);
+      const ultimaTentativa = detalhe;
       setResultado(ultimaTentativa);
 
       const atingiuMax = (
@@ -635,9 +644,14 @@ export default function CodeSubmissionPage() {
   };
 
   // Abrir modal de detalhes
-  const handleOpenDetalhes = (tentativa) => {
-    setTentativaSelecionada(tentativa);
-    setModalDetalhesOpen(true);
+  const handleOpenDetalhes = async (tentativa) => {
+    try {
+      const detalhe = await getSubmissao(tentativa.uuid);
+      setTentativaSelecionada({ ...tentativa, ...detalhe });
+      setModalDetalhesOpen(true);
+    } catch {
+      showError('Erro ao carregar os detalhes da tentativa');
+    }
   };
 
   if (loading) {
@@ -739,7 +753,7 @@ export default function CodeSubmissionPage() {
           />
         </Box>
 
-        {/* Direita: Pontos e Botão de Voltar */}
+        {/* Direita: Pontos */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Chip
             label={formatPoints(pontosMax)}
@@ -754,7 +768,7 @@ export default function CodeSubmissionPage() {
               px: 1,
             }}
           />
-          <Button
+          {/*
             variant="outlined"
             onClick={() => navigate(`/aluno/atividades/${atividadeUuid}`)}
             sx={{
@@ -773,7 +787,7 @@ export default function CodeSubmissionPage() {
             }}
           >
             ← Voltar para Atividade
-          </Button>
+          */}
         </Box>
       </Box>
 

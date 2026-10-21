@@ -3,7 +3,6 @@
  */
 
 import httpClient from '../../shared/api/httpClient';
-import { getFuncoesAtividade } from '../atividades/api';
 
 function adaptSubmission(submissao, index, total) {
   const hasResult = submissao.nota !== null && submissao.nota !== undefined;
@@ -58,12 +57,13 @@ function adaptSubmission(submissao, index, total) {
   };
 }
 
-export async function getSubmissoes(funcaoUuid, status, atividadeUuid, alunoUuid) {
+export async function getSubmissoes(funcaoUuid, status, atividadeUuid, alunoUuid, turmaUuid) {
   const params = {};
   if (funcaoUuid) params.funcaoUuid = funcaoUuid;
   if (status) params.status = status;
   if (atividadeUuid) params.atividadeUuid = atividadeUuid;
   if (alunoUuid) params.alunoUuid = alunoUuid;
+  if (turmaUuid) params.turmaUuid = turmaUuid;
 
   const { data } = await httpClient.get('/api/submissoes', {
     params: Object.keys(params).length ? params : undefined,
@@ -87,16 +87,7 @@ export async function getSubmissoes(funcaoUuid, status, atividadeUuid, alunoUuid
 export async function getSubmissao(uuid, { includeParameters = false } = {}) {
   const { data } = await httpClient.get(`/api/submissoes/${uuid}`);
   const submissao = adaptSubmission(data);
-  if (!includeParameters || !submissao.resultadosCasos?.length) return submissao;
-
-  try {
-    const funcoes = await getFuncoesAtividade(submissao.atividadeUuid);
-    const funcao = funcoes.find((item) => item.uuid === submissao.funcaoUuid);
-    return { ...submissao, parametros: funcao?.parametros };
-  } catch {
-    // O componente de entradas informa a ausência da assinatura sem ocultar a submissão.
-    return { ...submissao, parametros: undefined };
-  }
+  return includeParameters ? { ...submissao, parametros: data.parametros } : submissao;
 }
 
 export async function createSubmissao(funcaoAtividadeUuid, codigoFonte) {

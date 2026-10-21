@@ -780,7 +780,7 @@ export default function StudentHistoryPage() {
       try {
         const [atividadesData, submissoesData] = await Promise.all([
           getAtividades(turmaAtiva?.uuid), // Filtra estritamente pela turma ativa
-          getSubmissoes(),
+          getSubmissoes(null, null, null, null, turmaAtiva?.uuid),
         ]);
 
         if (active) {
@@ -795,6 +795,8 @@ export default function StudentHistoryPage() {
         }
       } catch (err) {
         if (active) {
+          setAtividades([]);
+          setSubmissoes([]);
           showError(
             err.response?.data?.detail || 'Erro ao carregar o histórico de atividades'
           );

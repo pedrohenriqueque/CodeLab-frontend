@@ -20,17 +20,21 @@ function adaptAtividade(atividade) {
 // ============================================================
 
 export async function getAtividades(turmaUuid) {
-  const atividades = await getAtividadesResumo(turmaUuid);
-  return Promise.all(atividades.map(async (atividade) => ({
-    ...atividade,
-    funcoes: await getFuncoesAtividade(atividade.uuid),
-  })));
+  const { data } = await httpClient.get('/api/atividades/resumo', {
+    params: turmaUuid ? { turmaUuid } : undefined,
+  });
+  return data.map((atividade) => ({
+    ...adaptAtividade(atividade),
+    funcoes: atividade.funcoes.map(adaptFuncaoAtividade),
+    progresso: atividade.progresso?.map(adaptProgressoFuncao) ?? [],
+  }));
 }
 
 export async function getAtividadesResumo(turmaUuid) {
-  const { data } = await httpClient.get('/api/atividades');
-  const atividades = turmaUuid ? data.filter((atividade) => atividade.turmaUuid === turmaUuid) : data;
-  return atividades.map(adaptAtividade);
+  const { data } = await httpClient.get('/api/atividades', {
+    params: turmaUuid ? { turmaUuid } : undefined,
+  });
+  return data.map(adaptAtividade);
 }
 
 export async function getAtividade(uuid) {
@@ -41,23 +45,37 @@ export async function getAtividade(uuid) {
 import { adaptCasoTeste } from '../funcoes/api';
 export { adaptCasoTeste };
 
+function adaptFuncaoAtividade(funcao) {
+  const rawCases = funcao.casosTeste ?? funcao.casos_teste;
+  return {
+    ...funcao,
+    funcaoUuid: funcao.uuid,
+    nomeFuncao: funcao.nome || funcao.nomeFuncao || funcao.nome_funcao,
+    descricao: funcao.enunciado || funcao.descricao,
+    peso: Number(funcao.notaMaxima ?? funcao.nota_maxima ?? 0),
+    ...(Array.isArray(rawCases) ? { casosTeste: rawCases.map(adaptCasoTeste) } : {}),
+  };
+}
+
+export function adaptProgressoFuncao(funcao) {
+  const melhorNota = funcao.melhorNota ?? funcao.melhor_nota;
+  return {
+    ...funcao,
+    funcaoUuid: funcao.funcaoAtividadeUuid ?? funcao.funcao_atividade_uuid,
+    tentativasUsadas: Number(funcao.totalTentativas ?? funcao.total_tentativas ?? 0),
+    melhorNota: melhorNota == null ? null : Number(melhorNota),
+    melhorTentativaUuid: funcao.melhorTentativaUuid ?? funcao.melhor_tentativa_uuid ?? null,
+    ultimaTentativaUuid: funcao.ultimaTentativaUuid ?? funcao.ultima_tentativa_uuid ?? null,
+  };
+}
+
 export async function getFuncoesAtividade(atividadeUuid, options = {}) {
   const params = {};
   if (options.visiveisApenas) {
     params.visiveis_apenas = true;
   }
   const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/funcoes`, { params });
-  return (Array.isArray(data) ? data : []).map((funcao) => {
-    const rawCases = funcao.casosTeste || funcao.casos_teste || [];
-    return {
-      ...funcao,
-      funcaoUuid: funcao.uuid,
-      nomeFuncao: funcao.nome || funcao.nomeFuncao || funcao.nome_funcao,
-      descricao: funcao.enunciado || funcao.descricao,
-      peso: Number(funcao.notaMaxima ?? funcao.nota_maxima ?? 0),
-      casosTeste: rawCases.map(adaptCasoTeste),
-    };
-  });
+  return (Array.isArray(data) ? data : []).map(adaptFuncaoAtividade);
 }
 
 export async function createAtividade(body) {
@@ -177,5 +195,5 @@ export async function getProgressoAluno(alunoUuid) {
 
 export async function getProgressoAtividade(atividadeUuid) {
   const { data } = await httpClient.get(`/api/atividades/${atividadeUuid}/progresso`);
-  return data.funcoes || [];
+  return (data.funcoes || []).map(adaptProgressoFuncao);
 }

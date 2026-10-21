@@ -188,15 +188,17 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
           <Typography variant="body2" color="text.secondary">
             Casos de teste canônicos cadastrados na biblioteca para esta função.
           </Typography>
-          {isAutor && <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreate}
-            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
-          >
-            Adicionar Caso
-          </Button>}
+          {isAutor && !formOpen && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreate}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
+            >
+              Adicionar Caso
+            </Button>
+          )}
         </Box>
         {!isAutor && <Alert severity="info" variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>Você pode consultar estes casos porque a função é compartilhada. Duplique-a para criar ou alterar casos.</Alert>}
 
@@ -247,7 +249,6 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
                   required
                   fullWidth
                   inputProps={{ min: 0.01, max: 999999.99, step: 0.01 }}
-                  helperText="Usado proporcionalmente na nota da função"
                   sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 />
                 <TextField

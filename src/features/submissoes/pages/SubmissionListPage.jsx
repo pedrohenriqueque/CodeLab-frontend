@@ -136,7 +136,7 @@ export default function SubmissionListPage() {
     let active = true;
     if (!turmaAtiva?.uuid) return undefined;
 
-    Promise.all([getSubmissoes(), getAtividadesResumo(turmaAtiva.uuid)]).then(([items, activities]) => {
+    Promise.all([getSubmissoes(null, null, null, null, turmaAtiva.uuid), getAtividadesResumo(turmaAtiva.uuid)]).then(([items, activities]) => {
       if (active) {
         setSubmissions(items);
         setClassActivities(activities);

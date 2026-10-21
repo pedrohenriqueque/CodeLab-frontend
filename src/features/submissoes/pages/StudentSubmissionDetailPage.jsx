@@ -291,7 +291,7 @@ export default function StudentSubmissionDetailPage() {
         const ativUuid = finalItem?.atividadeUuid;
         if (funcUuid && (!finalItem.tentativaNumero || finalItem.tentativaNumero > 1)) {
           try {
-            const allSubs = await getSubmissoes();
+            const allSubs = await getSubmissoes(funcUuid, null, ativUuid);
             const subsDestaFuncao = allSubs.filter(
               (s) => (s.funcaoUuid === funcUuid || s.funcao_atividade_uuid === funcUuid) &&
                      (!ativUuid || s.atividadeUuid === ativUuid)
@@ -305,6 +305,7 @@ export default function StudentSubmissionDetailPage() {
             console.error('Erro ao calcular tentativaNumero:', e);
           }
         }
+        if (!active) return;
         setSubmissao(finalItem);
         setLoading(false);
         setError('');
@@ -921,8 +922,8 @@ export default function StudentSubmissionDetailPage() {
         </Stack>
       </Box>
 
-      {/* ─── Barra de Ações Inferior ───────────────────────────────────────── */}
-      <Box
+      {/* ─── Barra de Ações Inferior (Removida: navegação já disponível no topo) ── */}
+      {/*
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -968,7 +969,7 @@ export default function StudentSubmissionDetailPage() {
         >
           Ir para minhas atividades
         </Button>
-      </Box>
+      */}
 
       {/* ─── Modal de Tela Cheia do Código ─────────────────────────────────── */}
       <Dialog open={fullScreen} onClose={() => setFullScreen(false)} fullScreen>

@@ -408,7 +408,7 @@ export default function AlunosPage() {
         const [dadosAlunos, dadosAtividades, dadosSubmissoes] = await Promise.all([
           getAlunosTurma(turmaUuid),
           getAtividades(turmaUuid),
-          getSubmissoes(),
+          getSubmissoes(null, null, null, null, turmaUuid),
         ]);
         if (!ativo) return;
         setAlunos(Array.isArray(dadosAlunos) ? dadosAlunos : []);

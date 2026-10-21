@@ -47,15 +47,12 @@ test('inconsistências são exibidas sem atribuir um valor ao parâmetro errado'
   assert.ok(!html.includes('<dt'));
 });
 
-test('detalhe consulta a assinatura do snapshot uma vez e seleciona por UUID', async () => {
+test('detalhe recebe a assinatura do snapshot junto com os resultados', async () => {
   const calls = [];
   const parametros = [{ nome: 'valor_original', tipo: 'int' }, { nome: 'ativo', tipo: 'bool' }];
   httpClient.defaults.adapter = async (config) => {
     calls.push(config.url);
-    const data = config.url === '/api/submissoes/tentativa-1' ? submission : [
-      { uuid: 'outro-snapshot', parametros: [{ nome: 'errado', tipo: 'int' }] },
-      { uuid: 'snapshot-1', parametros },
-    ];
+    const data = { ...submission, parametros };
     return { data, status: 200, statusText: 'OK', headers: {}, config };
   };
   const result = await getSubmissao('tentativa-1', { includeParameters: true });
@@ -63,7 +60,7 @@ test('detalhe consulta a assinatura do snapshot uma vez e seleciona por UUID', a
   assert.deepEqual(result.resultadosCasos, submission.resultadosCasos);
   assert.equal(result.resultadosCasos[0].retornoObtido, false);
   assert.equal(result.resultadosCasos[0].statusRetorno, 'DISPONIVEL');
-  assert.deepEqual(calls, ['/api/submissoes/tentativa-1', '/api/atividades/atividade-1/funcoes']);
+  assert.deepEqual(calls, ['/api/submissoes/tentativa-1']);
 });
 
 test('não busca funções quando os resultados estão ocultos ou a assinatura não foi solicitada', async () => {
@@ -77,9 +74,8 @@ test('não busca funções quando os resultados estão ocultos ou a assinatura n
   assert.deepEqual(calls, ['/api/submissoes/tentativa-1', '/api/submissoes/tentativa-1']);
 });
 
-test('falha ao carregar a assinatura preserva o detalhe e mostra aviso nas entradas', async () => {
+test('detalhe legado sem assinatura preserva os resultados e mostra aviso nas entradas', async () => {
   httpClient.defaults.adapter = async (config) => {
-    if (config.url.includes('/atividades/')) throw new Error('Serviço indisponível');
     return { data: submission, status: 200, headers: {}, config };
   };
   const result = await getSubmissao('tentativa-1', { includeParameters: true });

@@ -7,7 +7,7 @@
  * - Link inferior para "Ver atividades concluídas" (histórico).
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -32,7 +32,6 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 
 import useAtividades from '../hooks/useAtividades';
-import { getProgressoAtividade } from '../api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -549,39 +548,11 @@ function ActivitySection({
 
 export default function StudentActivityListPage() {
   const { atividades, loading, error } = useAtividades();
-  const [progresso, setProgresso] = useState([]);
+  const progresso = useMemo(() => atividades.flatMap((atividade) =>
+    (atividade.progresso || []).map((funcao) => ({ ...funcao, atividadeUuid: atividade.uuid }))
+  ), [atividades]);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
-
-  useEffect(() => {
-    let active = true;
-    async function loadProgress() {
-      const resultados = await Promise.all(
-        atividades.map(async (atividade) => {
-          try {
-            const funcoes = await getProgressoAtividade(atividade.uuid);
-            return funcoes.map((funcao) => ({
-              ...funcao,
-              atividadeUuid: atividade.uuid,
-              funcaoUuid: funcao.funcaoAtividadeUuid,
-              tentativasUsadas: funcao.enviada ? 1 : 0,
-              melhorNota:
-                funcao.melhorNota == null ? 0 : Number(funcao.melhorNota),
-            }));
-          } catch {
-            return [];
-          }
-        })
-      );
-      if (active) setProgresso(resultados.flat());
-    }
-    if (atividades.length > 0) {
-      loadProgress();
-    }
-    return () => {
-      active = false;
-    };
-  }, [atividades]);
 
   // Agrupa as atividades em "Em andamento" e "Para fazer"
   const { emAndamento, paraFazer } = useMemo(() => {
