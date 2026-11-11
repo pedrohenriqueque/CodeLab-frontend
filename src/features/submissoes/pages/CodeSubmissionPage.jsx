@@ -133,6 +133,7 @@ function cType(type) {
 function formatCParameter(parameter) {
   const type = parameter.tipo || 'int';
   const name = parameter.nome || 'valor';
+  if (type === 'string') return `char ${name}[]`;
   if (type.endsWith('[]')) return `${cType(type.slice(0, -2))} ${name}[]`;
   return `${cType(type)} ${name}`;
 }

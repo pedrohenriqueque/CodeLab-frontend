@@ -47,7 +47,12 @@ import {
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
 import { useAuth } from '../../auth/hooks/useAuthProvider';
 import TestCaseInputs from '../../../shared/components/TestCaseInputs';
-import { formatTestCaseValue, parseTestCaseValue } from '../../../shared/components/testCaseValues';
+import {
+  formatTestCaseValue,
+  parseTestCaseValue,
+  getParamInputProps,
+  getTypeName,
+} from '../../../shared/components/testCaseValues';
 
 export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdated }) {
   const [casos, setCasos] = useState([]);
@@ -108,7 +113,15 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
     const initInputs = {};
     parametros.forEach((p, index) => {
       const value = caso.entradas?.[index];
-      initInputs[p.nome] = typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value);
+      if (value === undefined) {
+        initInputs[p.nome] = '';
+      } else if (typeof value === 'string') {
+        initInputs[p.nome] = value;
+      } else if (p.tipo.endsWith('[]') && Array.isArray(value)) {
+        initInputs[p.nome] = value.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(', ');
+      } else {
+        initInputs[p.nome] = JSON.stringify(value);
+      }
     });
     setFormInputs(initInputs);
     const outVal = typeof caso.retornoEsperado === 'object' ? JSON.stringify(caso.retornoEsperado) : String(caso.retornoEsperado ?? '');
@@ -212,34 +225,47 @@ export default function FunctionTestCasesDialog({ open, onClose, funcao, onUpdat
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {/* Inputs por parâmetro */}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: `repeat(${Math.max(1, Math.min(parametros.length, 3))}, minmax(0, 1fr))` }, gap: 1.5 }}>
-                {parametros.map((p) => (
-                  <TextField
-                    key={p.nome}
-                    label={`Entrada: ${p.nome} (${p.tipo})`}
-                    value={formInputs[p.nome] ?? ''}
-                    onChange={(e) => setFormInputs((prev) => ({ ...prev, [p.nome]: e.target.value }))}
-                    size="small"
-                    required
-                    fullWidth
-                    placeholder={p.tipo.endsWith('[]') ? '[1, 2, 3]' : p.tipo === 'bool' ? 'true ou false' : `Valor de ${p.nome}`}
-                    helperText={p.tipo.endsWith('[]') ? 'Vetor em formato JSON' : p.tipo === 'bool' ? 'Use true ou false' : undefined}
-                    sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                  />
-                ))}
+                {parametros.map((p) => {
+                  const inputProps = getParamInputProps(p.tipo);
+                  const typeLabel = getTypeName(p.tipo);
+                  return (
+                    <TextField
+                      key={p.nome}
+                      label={`Entrada: ${p.nome} (${typeLabel})`}
+                      value={formInputs[p.nome] ?? ''}
+                      onChange={(e) => setFormInputs((prev) => ({ ...prev, [p.nome]: e.target.value }))}
+                      size="small"
+                      required
+                      fullWidth
+                      inputProps={inputProps.maxLength ? { maxLength: inputProps.maxLength } : undefined}
+                      placeholder={inputProps.placeholder}
+                      helperText={inputProps.helperText}
+                      sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  );
+                })}
               </Box>
 
               {/* Saída esperada, peso e descrição */}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 0.7fr 2fr' }, gap: 1.5 }}>
-                <TextField
-                  label="Saída Esperada (retorno)"
-                  value={formOutput}
-                  onChange={(e) => setFormOutput(e.target.value)}
-                  size="small"
-                  required
-                  fullWidth
-                  placeholder="Ex: 120"
-                  sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
+                {(() => {
+                  const outProps = getParamInputProps(funcao?.tipoRetorno || 'int');
+                  const outLabel = getTypeName(funcao?.tipoRetorno || 'int');
+                  return (
+                    <TextField
+                      label={`Saída Esperada: retorno (${outLabel})`}
+                      value={formOutput}
+                      onChange={(e) => setFormOutput(e.target.value)}
+                      size="small"
+                      required
+                      fullWidth
+                      inputProps={outProps.maxLength ? { maxLength: outProps.maxLength } : undefined}
+                      placeholder={outProps.placeholder}
+                      helperText={outProps.helperText}
+                      sx={{ backgroundColor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  );
+                })()}
                 <TextField
                   label="Peso relativo"
                   type="number"

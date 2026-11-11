@@ -15,6 +15,7 @@ import {
   Typography,
   IconButton,
   MenuItem,
+  ListSubheader,
   CircularProgress,
   Divider,
   Alert,
@@ -29,22 +30,35 @@ import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/Check';
+import { formatCParameterSignature } from '../../../shared/components/testCaseValues';
 
-const C_RETURN_TYPES = ['int', 'long', 'float', 'double', 'char', 'bool', 'string'];
-const C_PARAM_TYPES = [
-  'int',
-  'long',
-  'float',
-  'double',
-  'char',
-  'bool',
-  'string',
-  'int[]',
-  'long[]',
-  'float[]',
-  'double[]',
-  'char[]',
-  'bool[]',
+// Apenas Escalares: em C, funções não retornam vetores e retorno de ponteiro/string gera riscos de memória/segfault
+const C_RETURN_OPTIONS = [
+  { value: 'int', label: 'int' },
+  { value: 'long', label: 'long' },
+  { value: 'float', label: 'float' },
+  { value: 'double', label: 'double' },
+  { value: 'char', label: 'char' },
+  { value: 'bool', label: 'bool' },
+];
+
+// Parâmetros: Escalares e Vetores com Opção A para char[] (Texto vs Vetor de Caracteres)
+const C_PARAM_OPTIONS_SCALARS = [
+  { value: 'int', label: 'int' },
+  { value: 'long', label: 'long' },
+  { value: 'float', label: 'float' },
+  { value: 'double', label: 'double' },
+  { value: 'char', label: 'char' },
+  { value: 'bool', label: 'bool' },
+];
+
+const C_PARAM_OPTIONS_VECTORS = [
+  { value: 'string', label: 'Texto (char[])' },
+  { value: 'char[]', label: 'Vetor de Caracteres (char[])' },
+  { value: 'int[]', label: 'int[]' },
+  { value: 'long[]', label: 'long[]' },
+  { value: 'float[]', label: 'float[]' },
+  { value: 'double[]', label: 'double[]' },
 ];
 
 const INITIAL_STATE = {
@@ -177,7 +191,7 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
 
   const validParams = form.parametros.filter((p) => p.nome && p.nome.trim());
   const formattedSignature = `${form.retorno} ${cleanName || 'somar'}(${
-    validParams.length > 0 ? validParams.map((p) => `${p.tipo} ${p.nome.trim()}`).join(', ') : 'void'
+    validParams.length > 0 ? validParams.map((p) => formatCParameterSignature(p.nome, p.tipo)).join(', ') : 'void'
   });`;
 
   const handleCopySignature = () => {
@@ -389,11 +403,16 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
                   size="small"
                   sx={selectSx}
                 >
-                  {C_RETURN_TYPES.map((t) => (
-                    <MenuItem key={t} value={t}>
-                      {t}
+                  {C_RETURN_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </MenuItem>
                   ))}
+                  {!C_RETURN_OPTIONS.some((opt) => opt.value === form.retorno) && (
+                    <MenuItem value={form.retorno}>
+                      {form.retorno}
+                    </MenuItem>
+                  )}
                 </TextField>
               </Box>
 
@@ -498,7 +517,7 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
                       />
                     </Box>
 
-                    <Box sx={{ width: 130 }}>
+                    <Box sx={{ width: { xs: 150, sm: 220 }, flexShrink: 0 }}>
                       <Typography
                         component="label"
                         sx={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#334155', mb: 0.4 }}
@@ -512,12 +531,35 @@ export default function FunctionFormDialog({ open, onClose, onSave, initialData 
                         size="small"
                         fullWidth
                         sx={selectSx}
+                        SelectProps={{
+                          MenuProps: {
+                            PaperProps: {
+                              sx: { maxHeight: 320 },
+                            },
+                          },
+                        }}
                       >
-                        {C_PARAM_TYPES.map((t) => (
-                          <MenuItem key={t} value={t}>
-                            {t}
+                        <ListSubheader sx={{ fontWeight: 700, color: '#64748B', lineHeight: '30px', bgcolor: '#F8FAFC' }}>
+                          Escalares
+                        </ListSubheader>
+                        {C_PARAM_OPTIONS_SCALARS.map((opt) => (
+                          <MenuItem key={opt.value} value={opt.value}>
+                            {opt.label}
                           </MenuItem>
                         ))}
+                        <ListSubheader sx={{ fontWeight: 700, color: '#64748B', lineHeight: '30px', bgcolor: '#F8FAFC' }}>
+                          Textos e Vetores
+                        </ListSubheader>
+                        {C_PARAM_OPTIONS_VECTORS.map((opt) => (
+                          <MenuItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </MenuItem>
+                        ))}
+                        {![...C_PARAM_OPTIONS_SCALARS, ...C_PARAM_OPTIONS_VECTORS].some((o) => o.value === param.tipo) && (
+                          <MenuItem value={param.tipo}>
+                            {param.tipo}
+                          </MenuItem>
+                        )}
                       </TextField>
                     </Box>
 

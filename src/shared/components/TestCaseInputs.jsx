@@ -1,5 +1,5 @@
 import { Box, Typography } from '@mui/material';
-import { describeTestCaseInputs, formatTestCaseValue } from './testCaseValues';
+import { describeTestCaseInputs, formatTestCaseValue, getTypeName } from './testCaseValues';
 
 export default function TestCaseInputs({ entradas, parametros }) {
   const { rows, error } = describeTestCaseInputs(entradas, parametros);
@@ -13,7 +13,7 @@ export default function TestCaseInputs({ entradas, parametros }) {
 
   return <Box component="dl" sx={{ m: 0, display: 'flex', flexDirection: 'column', gap: 0.35, minWidth: 0 }}>
     {rows.map(({ nome, tipo, valor }) => <Box key={nome} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 0.75, minWidth: 0 }}>
-      <Box component="dt" title={tipo} sx={{ color: 'text.secondary', fontWeight: 600, fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{nome}:</Box>
+      <Box component="dt" title={getTypeName(tipo)} sx={{ color: 'text.secondary', fontWeight: 600, fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{nome}:</Box>
       <Box component="dd" sx={{ m: 0, fontFamily: 'monospace', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', minWidth: 0 }}>{formatTestCaseValue(valor)}</Box>
     </Box>)}
   </Box>;

@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeTestCaseInputs, formatCapturedReturn, formatTestCaseValue, parseTestCaseValue } from './testCaseValues.js';
+import {
+  describeTestCaseInputs,
+  formatCapturedReturn,
+  formatTestCaseValue,
+  parseTestCaseValue,
+  formatCParameterSignature,
+  getTypeName,
+  getParamInputProps,
+} from './testCaseValues.js';
 
 test('associa cada valor à ordem da assinatura sem achatar vetores', () => {
   const parametros = [
@@ -53,13 +61,21 @@ test('converte campos em valores JSON mantendo o payload posicional', () => {
   assert.deepEqual(parseTestCaseValue('["a","b"]', 'char[]'), ['a', 'b']);
   assert.deepEqual(parseTestCaseValue('[]', 'int[]'), []);
   assert.equal(parseTestCaseValue('true', 'bool'), true);
+  // Suporte a texto comum e vetores separados por vírgula
+  assert.equal(parseTestCaseValue('radar', 'string'), 'radar');
+  assert.equal(parseTestCaseValue("'a'", 'char'), 'a');
+  assert.deepEqual(parseTestCaseValue('10, 20, 30', 'int[]'), [10, 20, 30]);
+  assert.deepEqual(parseTestCaseValue('a, b, c', 'char[]'), ['a', 'b', 'c']);
+  assert.deepEqual(parseTestCaseValue("'r', 'a', 'd'", 'char[]'), ['r', 'a', 'd']);
+  assert.deepEqual(parseTestCaseValue('1.5, 2.5, 3.14', 'float[]'), [1.5, 2.5, 3.14]);
 });
 
 test('rejeita conversões parciais e elementos incompatíveis com o tipo', () => {
   for (const [value, tipo] of [
     ['', 'int'], ['2abc', 'int'], ['2.5', 'int'], ['Infinity', 'double'],
-    ['yes', 'bool'], ['ab', 'char'], ['1,2,3', 'int[]'], ['{}', 'int[]'],
+    ['yes', 'bool'], ['ab', 'char'], ['1, abc, 3', 'int[]'], ['{}', 'int[]'],
     ['["1",2]', 'int[]'], ['[true,2]', 'int[]'], ['[1,0]', 'bool[]'],
+    ['a, bc, c', 'char[]'], ['', 'int[]'],
   ]) {
     assert.throws(() => parseTestCaseValue(value, tipo));
   }
@@ -78,4 +94,21 @@ test('não inventa retorno para casos antigos, não executados ou com erro', () 
   assert.equal(formatCapturedReturn({ statusRetorno: 'NAO_EXECUTADO' }), 'Não executado');
   assert.equal(formatCapturedReturn({ statusRetorno: 'ERRO_EXECUCAO' }), 'Erro durante a execução');
   assert.equal(formatCapturedReturn({ statusRetorno: 'LIMITE_EXCEDIDO' }), 'Retorno acima do limite de exibição');
+});
+
+test('formata assinatura de parâmetros C e props de inputs amigáveis', () => {
+  // Ambas as opções geram char nome[] no protótipo de C do aluno
+  assert.equal(formatCParameterSignature('str', 'string'), 'char str[]');
+  assert.equal(formatCParameterSignature('str', 'char[]'), 'char str[]');
+  assert.equal(formatCParameterSignature('valores', 'int[]'), 'int valores[]');
+  assert.equal(formatCParameterSignature('n', 'int'), 'int n');
+  assert.equal(formatCParameterSignature('c', 'char'), 'char c');
+
+  assert.equal(getTypeName('string'), 'Texto (char[])');
+  assert.equal(getTypeName('char[]'), 'Vetor de Caracteres (char[])');
+
+  assert.equal(getParamInputProps('char').maxLength, 1);
+  assert.equal(getParamInputProps('string').placeholder, 'ex: radar');
+  assert.equal(getParamInputProps('char[]').placeholder, 'ex: a, b, c');
+  assert.equal(getParamInputProps('int[]').placeholder, 'ex: 10, 20, 30');
 });

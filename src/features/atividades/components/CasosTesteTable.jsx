@@ -40,6 +40,7 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 
 import { getCasosTeste, createCasosTeste, deleteCasoTeste, adaptCasoTeste } from '../api';
 import { useSnackbar } from '../../../shared/hooks/useSnackbar';
+import { parseTestCaseValue, getParamInputProps, getTypeName } from '../../../shared/components/testCaseValues';
 
 export default function CasosTesteTable({ funcaoUuid, parametros = [], onUpdate }) {
   const [casos, setCasos] = useState([]);
